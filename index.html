@@ -2,68 +2,170 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#09090b">
     <title>Identity Verification</title>
     
-    <!-- TensorFlow.js Face Detection -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.17.0/dist/tf-core.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.17.0/dist/tf-converter.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl@4.17.0/dist/tf-backend-webgl.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection@1.0.2/dist/face-detection.min.js"></script>
+    <!-- MediaPipe Vision WASM -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm/vision_bundle.mjs" type="module"></script>
     
     <style>
         :root {
             --bg: #09090b;
             --surface: #18181b;
-            --border: #27272a;
+            --surface-2: #27272a;
+            --border: #3f3f46;
             --text: #fafafa;
             --text-muted: #a1a1aa;
             --success: #22c55e;
-            --warning: #eab308;
+            --warning: #f59e0b;
             --error: #ef4444;
             --primary: #3b82f6;
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        html {
+            height: 100%;
+            height: -webkit-fill-available;
+        }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
             background: var(--bg);
             color: var(--text);
             min-height: 100vh;
+            min-height: -webkit-fill-available;
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            overflow-x: hidden;
         }
 
         .app {
             width: 100%;
-            max-width: 420px;
-            padding: 20px;
+            max-width: 440px;
+            padding: 12px;
+            padding-bottom: calc(12px + env(safe-area-inset-bottom));
+        }
+
+        /* Mobile-specific adjustments */
+        @media (max-width: 480px) {
+            .app {
+                padding: 8px;
+                padding-bottom: calc(8px + env(safe-area-inset-bottom));
+            }
+            
+            .header h1 { font-size: 18px; }
+            .header p { font-size: 12px; }
+            
+            .camera-container {
+                border-radius: 16px;
+                margin-bottom: 12px;
+            }
+            
+            .quality-panel {
+                padding: 10px;
+                border-radius: 12px;
+                margin-bottom: 12px;
+            }
+            
+            .quality-grid {
+                gap: 4px;
+            }
+            
+            .quality-item {
+                padding: 6px 2px;
+                font-size: 8px;
+            }
+            
+            .quality-icon {
+                font-size: 12px;
+            }
+            
+            .signals-row {
+                gap: 4px;
+                margin-top: 8px;
+                padding-top: 8px;
+            }
+            
+            .signal-item {
+                padding: 4px;
+            }
+            
+            .signal-label { font-size: 7px; }
+            .signal-value { font-size: 10px; }
+            
+            .btn {
+                padding: 12px;
+                font-size: 14px;
+                border-radius: 10px;
+            }
+            
+            .debug-panel {
+                font-size: 8px;
+                padding: 6px;
+                max-width: 100px;
+            }
+            
+            .status-text h2 { font-size: 14px; }
+            .status-text p { font-size: 11px; }
+            
+            .face-oval {
+                width: 64%;
+                height: 70%;
+                border-width: 2px;
+            }
+        }
+
+        /* Small phones */
+        @media (max-width: 360px) {
+            .quality-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+            
+            .quality-item {
+                padding: 4px 1px;
+            }
+            
+            .debug-panel {
+                display: none;
+            }
+        }
+
+        /* Landscape mode - hide some elements */
+        @media (max-height: 500px) and (orientation: landscape) {
+            .header { display: none; }
+            .signals-row { display: none; }
+            .debug-panel { display: none; }
+            
+            .camera-container {
+                aspect-ratio: 4/3;
+                max-height: 70vh;
+            }
         }
 
         .header {
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
-        .header h1 {
-            font-size: 22px;
-            font-weight: 600;
-            margin-bottom: 6px;
-        }
-        .header p {
-            font-size: 14px;
-            color: var(--text-muted);
-        }
+        .header h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+        .header p { font-size: 13px; color: var(--text-muted); }
 
+        /* Camera */
         .camera-container {
             position: relative;
             width: 100%;
             aspect-ratio: 3/4;
             background: #000;
-            border-radius: 24px;
+            border-radius: 20px;
             overflow: hidden;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
 
         #video {
@@ -73,7 +175,7 @@
             transform: scaleX(-1);
         }
 
-        .camera-overlay {
+        .overlay {
             position: absolute;
             inset: 0;
             pointer-events: none;
@@ -84,36 +186,28 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 68%;
-            height: 55%;
-            border: 3px solid rgba(255,255,255,0.25);
+            width: 60%;
+            height: 68%;
+            border: 3px solid rgba(255,255,255,0.3);
             border-radius: 50%;
-            transition: all 0.25s ease;
+            transition: all 0.2s;
         }
-        .face-oval.detecting {
-            border-color: var(--warning);
-            box-shadow: 0 0 0 4px rgba(234,179,8,0.15);
-        }
-        .face-oval.success {
-            border-color: var(--success);
-            box-shadow: 0 0 0 4px rgba(34,197,94,0.2), 0 0 40px rgba(34,197,94,0.15);
-        }
-        .face-oval.error {
-            border-color: var(--error);
-            box-shadow: 0 0 0 4px rgba(239,68,68,0.2);
-        }
+        .face-oval.detecting { border-color: var(--warning); box-shadow: 0 0 0 4px rgba(245,158,11,0.15); }
+        .face-oval.valid { border-color: var(--success); box-shadow: 0 0 0 4px rgba(34,197,94,0.2); }
+        .face-oval.invalid { border-color: var(--error); box-shadow: 0 0 0 4px rgba(239,68,68,0.2); }
 
         .oval-mask {
             position: absolute;
             inset: 0;
-            background: radial-gradient(ellipse 34% 27.5% at 50% 50%, transparent 99%, rgba(0,0,0,0.7) 100%);
+            background: radial-gradient(ellipse 30% 34% at 50% 50%, transparent 99%, rgba(0,0,0,0.75) 100%);
         }
 
+        /* Progress */
         .progress-container {
             position: absolute;
-            top: 16px;
-            left: 16px;
-            right: 16px;
+            top: 12px;
+            left: 12px;
+            right: 12px;
         }
         .progress-bar {
             height: 4px;
@@ -125,16 +219,37 @@
             height: 100%;
             width: 0%;
             background: var(--success);
-            transition: width 0.2s ease;
+            transition: width 0.3s;
         }
 
-        .status-display {
+        /* Frame indicators */
+        .frames-indicator {
+            position: absolute;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+        }
+        .frame-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            transition: all 0.2s;
+        }
+        .frame-dot.captured { background: var(--success); }
+        .frame-dot.current { background: var(--warning); animation: pulse 0.8s ease infinite; }
+        @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.3); } }
+
+        /* Status */
+        .status-bar {
             position: absolute;
             bottom: 0;
             left: 0;
             right: 0;
-            padding: 20px;
-            background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+            padding: 16px;
+            background: linear-gradient(transparent, rgba(0,0,0,0.85));
         }
         .status-row {
             display: flex;
@@ -142,213 +257,147 @@
             gap: 12px;
         }
         .status-icon {
-            width: 44px;
-            height: 44px;
+            width: 40px;
+            height: 40px;
             border-radius: 50%;
             background: rgba(255,255,255,0.1);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 20px;
+            font-size: 18px;
         }
-        .status-text h2 {
-            font-size: 16px;
-            font-weight: 600;
+        .status-text h2 { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+        .status-text p { font-size: 12px; color: var(--text-muted); }
+
+        /* Debug info */
+        .debug-panel {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: rgba(0,0,0,0.7);
+            padding: 8px;
+            border-radius: 8px;
+            font-size: 9px;
+            font-family: monospace;
+            color: var(--text-muted);
+            max-width: 120px;
+        }
+        .debug-row {
+            display: flex;
+            justify-content: space-between;
             margin-bottom: 2px;
         }
-        .status-text p {
-            font-size: 13px;
-            color: var(--text-muted);
-        }
-
-        /* Mode indicator */
-        .mode-indicator {
-            position: absolute;
-            top: 16px;
-            right: 16px;
-            padding: 4px 10px;
-            background: rgba(0,0,0,0.6);
-            border-radius: 12px;
-            font-size: 10px;
-            color: var(--text-muted);
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        .mode-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: var(--warning);
-        }
-        .mode-dot.active { background: var(--success); }
+        .debug-value { color: var(--text); }
+        .debug-value.pass { color: var(--success); }
+        .debug-value.fail { color: var(--error); }
 
         /* Loading overlay */
         .loading-overlay {
             position: absolute;
             inset: 0;
-            background: rgba(0,0,0,0.8);
+            background: rgba(0,0,0,0.85);
             display: none;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             gap: 16px;
-            border-radius: 24px;
+            border-radius: 20px;
         }
         .loading-overlay.active { display: flex; }
         .spinner {
-            width: 48px;
-            height: 48px;
+            width: 44px;
+            height: 44px;
             border: 3px solid rgba(255,255,255,0.1);
             border-top-color: var(--primary);
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .loading-text {
-            font-size: 14px;
-            color: var(--text-muted);
-            text-align: center;
-        }
+        .loading-text { font-size: 14px; color: var(--text-muted); text-align: center; }
 
-        /* Checks panel */
-        .checks-panel {
+        /* Quality panel */
+        .quality-panel {
             background: var(--surface);
-            border-radius: 16px;
-            padding: 16px;
-            margin-bottom: 20px;
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 16px;
         }
-        .checks-header {
+        .quality-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
         }
-        .checks-title {
-            font-size: 12px;
-            font-weight: 500;
+        .quality-title {
+            font-size: 11px;
+            font-weight: 600;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
-        .checks-mode {
-            font-size: 10px;
+        .quality-mode {
+            font-size: 9px;
             padding: 3px 8px;
-            background: rgba(59,130,246,0.15);
-            color: var(--primary);
-            border-radius: 10px;
+            background: rgba(34,197,94,0.15);
+            color: var(--success);
+            border-radius: 8px;
         }
-        .checks-grid {
+        .quality-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
         }
-        .check-item {
+        .quality-item {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 6px;
-            padding: 10px 6px;
+            gap: 4px;
+            padding: 8px 4px;
             background: rgba(255,255,255,0.03);
-            border-radius: 10px;
-            font-size: 11px;
+            border-radius: 8px;
+            font-size: 9px;
             color: var(--text-muted);
             text-align: center;
         }
-        .check-icon {
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.05);
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        .quality-icon {
             font-size: 14px;
-            transition: all 0.2s;
+            transition: all 0.15s;
         }
-        .check-item.pass .check-icon {
-            background: rgba(34,197,94,0.15);
-            color: var(--success);
-        }
-        .check-item.fail .check-icon {
-            background: rgba(239,68,68,0.1);
-            color: var(--error);
-        }
-        .check-item.checking .check-icon {
-            background: rgba(234,179,8,0.15);
-            color: var(--warning);
-        }
+        .quality-item.pass .quality-icon { color: var(--success); }
+        .quality-item.fail .quality-icon { color: var(--error); }
 
-        /* Shots indicator */
-        .shots-indicator {
+        /* Soft signals */
+        .signals-row {
             display: flex;
-            justify-content: center;
             gap: 8px;
-            margin-top: 12px;
-            padding-top: 12px;
+            margin-top: 10px;
+            padding-top: 10px;
             border-top: 1px solid var(--border);
         }
-        .shot-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.1);
-            transition: all 0.2s;
+        .signal-item {
+            flex: 1;
+            padding: 6px;
+            background: rgba(255,255,255,0.02);
+            border-radius: 6px;
+            text-align: center;
         }
-        .shot-dot.captured {
-            background: var(--success);
-        }
-        .shot-dot.current {
-            background: var(--warning);
-            animation: pulse 1s ease infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.3); }
-        }
+        .signal-label { font-size: 8px; color: var(--text-muted); margin-bottom: 2px; }
+        .signal-value { font-size: 11px; font-weight: 600; }
 
+        /* Button */
         .btn {
             width: 100%;
-            padding: 16px;
+            padding: 14px;
             border: none;
-            border-radius: 14px;
-            font-size: 16px;
+            border-radius: 12px;
+            font-size: 15px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.2s;
             font-family: inherit;
+            transition: all 0.2s;
         }
-        .btn-primary {
-            background: var(--primary);
-            color: white;
-        }
-        .btn-primary:hover:not(:disabled) { background: #2563eb; }
-        .btn-primary:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        /* Model loading */
-        .model-status {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            padding: 12px;
-            background: var(--surface);
-            border-radius: 10px;
-            margin-bottom: 16px;
-            font-size: 13px;
-            color: var(--text-muted);
-        }
-        .mini-spinner {
-            width: 16px;
-            height: 16px;
-            border: 2px solid rgba(255,255,255,0.1);
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
         /* Result screen */
         .result-screen {
@@ -360,59 +409,45 @@
         }
         .result-screen.active { display: flex; }
         .result-icon {
-            width: 88px;
-            height: 88px;
+            width: 80px;
+            height: 80px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 44px;
-            margin-bottom: 24px;
+            font-size: 40px;
+            margin-bottom: 20px;
         }
         .result-icon.success { background: rgba(34,197,94,0.12); }
         .result-icon.error { background: rgba(239,68,68,0.12); }
-        .result-title {
-            font-size: 24px;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-        .result-subtitle {
-            font-size: 15px;
-            color: var(--text-muted);
-            margin-bottom: 32px;
-        }
+        .result-title { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+        .result-subtitle { font-size: 14px; color: var(--text-muted); margin-bottom: 24px; }
         .result-photo {
-            width: 110px;
-            height: 140px;
+            width: 100px;
+            height: 130px;
             object-fit: cover;
-            border-radius: 14px;
+            border-radius: 12px;
             border: 3px solid var(--success);
-            margin-bottom: 32px;
+            margin-bottom: 24px;
         }
 
         .hidden { display: none !important; }
-        #canvas { display: none; }
+        #canvas, #cropCanvas { display: none; }
     </style>
 </head>
 <body>
     <div class="app">
         <!-- Main Flow -->
-        <div id="verificationFlow">
+        <div id="mainFlow">
             <div class="header">
                 <h1>Identity Verification</h1>
-                <p>Position your face in the oval and hold still</p>
-            </div>
-
-            <!-- Model loading status -->
-            <div class="model-status" id="modelStatus">
-                <div class="mini-spinner"></div>
-                <span id="modelStatusText">Loading face detection...</span>
+                <p>Position your face and hold naturally</p>
             </div>
 
             <div class="camera-container">
                 <video id="video" autoplay playsinline muted></video>
                 
-                <div class="camera-overlay">
+                <div class="overlay">
                     <div class="oval-mask"></div>
                     <div class="face-oval" id="faceOval"></div>
                     
@@ -422,12 +457,25 @@
                         </div>
                     </div>
 
-                    <div class="mode-indicator">
-                        <div class="mode-dot" id="modeDot"></div>
-                        <span id="modeText">Loading...</span>
+                    <div class="frames-indicator" id="framesIndicator">
+                        <div class="frame-dot" id="frame0"></div>
+                        <div class="frame-dot" id="frame1"></div>
+                        <div class="frame-dot" id="frame2"></div>
+                        <div class="frame-dot" id="frame3"></div>
+                        <div class="frame-dot" id="frame4"></div>
                     </div>
 
-                    <div class="status-display">
+                    <div class="debug-panel" id="debugPanel">
+                        <div class="debug-row"><span>FPS:</span><span class="debug-value" id="dbgFps">--</span></div>
+                        <div class="debug-row"><span>Face:</span><span class="debug-value" id="dbgFace">--</span></div>
+                        <div class="debug-row"><span>Yaw:</span><span class="debug-value" id="dbgYaw">--</span></div>
+                        <div class="debug-row"><span>Pitch:</span><span class="debug-value" id="dbgPitch">--</span></div>
+                        <div class="debug-row"><span>EAR:</span><span class="debug-value" id="dbgEar">--</span></div>
+                        <div class="debug-row"><span>Luma:</span><span class="debug-value" id="dbgLuma">--</span></div>
+                        <div class="debug-row"><span>Sharp:</span><span class="debug-value" id="dbgSharp">--</span></div>
+                    </div>
+
+                    <div class="status-bar">
                         <div class="status-row">
                             <div class="status-icon" id="statusIcon">👤</div>
                             <div class="status-text">
@@ -440,51 +488,67 @@
 
                 <div class="loading-overlay" id="loadingOverlay">
                     <div class="spinner"></div>
-                    <div class="loading-text" id="loadingText">Verifying with server...</div>
+                    <div class="loading-text" id="loadingText">Initializing...</div>
                 </div>
             </div>
 
-            <div class="checks-panel">
-                <div class="checks-header">
-                    <span class="checks-title">Quality Checks</span>
-                    <span class="checks-mode" id="checksMode">Browser</span>
+            <div class="quality-panel">
+                <div class="quality-header">
+                    <span class="quality-title">Quality Gates</span>
+                    <span class="quality-mode" id="modeLabel">Loading...</span>
                 </div>
-                <div class="checks-grid">
-                    <div class="check-item" id="checkFace">
-                        <div class="check-icon">👤</div>
+                <div class="quality-grid">
+                    <div class="quality-item" id="qFace">
+                        <span class="quality-icon">👤</span>
                         <span>Face</span>
                     </div>
-                    <div class="check-item" id="checkPosition">
-                        <div class="check-icon">⊕</div>
-                        <span>Position</span>
-                    </div>
-                    <div class="check-item" id="checkSize">
-                        <div class="check-icon">⤢</div>
+                    <div class="quality-item" id="qSize">
+                        <span class="quality-icon">⤢</span>
                         <span>Size</span>
                     </div>
-                    <div class="check-item" id="checkEyes">
-                        <div class="check-icon">👁</div>
+                    <div class="quality-item" id="qPose">
+                        <span class="quality-icon">↔</span>
+                        <span>Pose</span>
+                    </div>
+                    <div class="quality-item" id="qEyes">
+                        <span class="quality-icon">👁</span>
                         <span>Eyes</span>
                     </div>
-                    <div class="check-item" id="checkAngle">
-                        <div class="check-icon">↔</div>
-                        <span>Angle</span>
+                    <div class="quality-item" id="qLight">
+                        <span class="quality-icon">☀</span>
+                        <span>Light</span>
                     </div>
-                    <div class="check-item" id="checkStable">
-                        <div class="check-icon">◎</div>
-                        <span>Steady</span>
+                    <div class="quality-item" id="qSharp">
+                        <span class="quality-icon">◉</span>
+                        <span>Sharp</span>
+                    </div>
+                    <div class="quality-item" id="qLandmarks">
+                        <span class="quality-icon">⬡</span>
+                        <span>Visible</span>
+                    </div>
+                    <div class="quality-item" id="qMotion">
+                        <span class="quality-icon">↺</span>
+                        <span>Motion</span>
                     </div>
                 </div>
 
-                <!-- Shots captured indicator -->
-                <div class="shots-indicator" id="shotsIndicator">
-                    <div class="shot-dot" id="shot1"></div>
-                    <div class="shot-dot" id="shot2"></div>
-                    <div class="shot-dot" id="shot3"></div>
+                <div class="signals-row">
+                    <div class="signal-item">
+                        <div class="signal-label">Jitter</div>
+                        <div class="signal-value" id="sigJitter">--</div>
+                    </div>
+                    <div class="signal-item">
+                        <div class="signal-label">Entropy</div>
+                        <div class="signal-value" id="sigEntropy">--</div>
+                    </div>
+                    <div class="signal-item">
+                        <div class="signal-label">Uniformity</div>
+                        <div class="signal-value" id="sigUniform">--</div>
+                    </div>
                 </div>
             </div>
 
-            <button class="btn btn-primary" id="startBtn" disabled>Loading...</button>
+            <button class="btn btn-primary" id="startBtn" disabled>Loading MediaPipe...</button>
         </div>
 
         <!-- Result Screen -->
@@ -498,319 +562,883 @@
     </div>
 
     <canvas id="canvas"></canvas>
+    <canvas id="cropCanvas" width="224" height="224"></canvas>
 
-    <script>
+    <script type="module">
     /**
-     * HYBRID LIVENESS DETECTION
-     * ==========================
+     * PASSIVE FACE LIVENESS - CLIENT
+     * ===============================
      * 
-     * PRIMARY: TensorFlow.js in browser for quality checks (best accuracy)
-     * FALLBACK: Server-side detection if TF.js fails to load
+     * MediaPipe Face Detector + Landmarker (WASM)
+     * Hard gates + Soft signals + Randomized capture
      * 
-     * Flow:
-     * 1. Browser: TF.js checks face quality in real-time
-     * 2. When 5 consecutive good frames detected:
-     *    - Capture 3 best shots
-     * 3. Send 3 shots to server
-     * 4. Server: Select best shot → Run YOUR liveness model → Return result
+     * Outputs 5 frames with metadata to server for PAD scoring
      */
+
+    import { FaceDetector, FaceLandmarker, FilesetResolver } from 
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/+esm';
 
     // ======================== CONFIGURATION ========================
     const CONFIG = {
         API_URL: 'http://localhost:5000',
         
-        // TensorFlow.js settings
-        TF_MODEL_LOAD_TIMEOUT: 15000,  // 15 seconds to load model
-        
-        // Quality thresholds
-        MIN_FACE_RATIO: 0.08,
-        MAX_FACE_RATIO: 0.55,
-        CENTER_TOLERANCE_X: 0.18,
-        CENTER_TOLERANCE_Y: 0.20,
-        MAX_YAW: 20,
-        MAX_PITCH: 15,
-        MAX_MOVEMENT: 12,
+        // Hard Gates (adjusted per your spec)
+        FACE_CONFIDENCE: 0.85,
+        FACE_RATIO_MIN: 0.08,    // Minimum face size
+        FACE_RATIO_MAX: 0.55,    // Maximum face size
+        MAX_YAW: 25,
+        MAX_PITCH: 25,      // Relaxed - natural phone/laptop viewing angle
+        MAX_ROLL: 18,
+        MIN_EAR: 0.22,          // Eye Aspect Ratio (fallback check)
+        LUMA_MIN: 50,
+        LUMA_MAX: 200,
+        LUMA_RANGE_MIN: 35,
+        SHARPNESS_MIN: 60,      // Laplacian variance
         
         // Capture settings
-        DETECTION_INTERVAL_MS: 100,    // 10 FPS for TF.js
-        FALLBACK_INTERVAL_MS: 300,     // 3 FPS for server fallback
-        REQUIRED_GOOD_FRAMES: 5,       // Consecutive good frames needed
-        SHOTS_TO_CAPTURE: 3,           // Number of shots to send
-        MIN_CONFIDENCE: 0.55,          // Minimum liveness confidence from server
+        TOTAL_FRAMES: 5,
+        CAPTURE_WINDOW_MS: 3000,
+        MIN_FRAME_SPACING_MS: 250,
+        MIN_POSE_CHANGE_YAW: 3,
+        MIN_POSE_CHANGE_PITCH: 2,
+        FRAMES_WITH_POSE_CHANGE: 2,
+        
+        // Timing
+        DETECTION_INTERVAL_MS: 80,  // ~12 FPS
+        
+        // Anti-tamper
+        SESSION_TTL_MS: 30000,
+        
+        // Image output
+        CROP_SIZE: 224,
+        JPEG_QUALITY: 0.75,
     };
 
     // ======================== STATE ========================
     const state = {
-        // Detection mode
-        mode: 'loading',  // 'loading' | 'tfjs' | 'server'
-        tfModel: null,
+        // MediaPipe
+        faceDetector: null,
+        faceLandmarker: null,
         
         // Camera
         stream: null,
+        video: null,
+        
+        // Detection loop
         isRunning: false,
         loopId: null,
+        lastFrameTime: 0,
+        fps: 0,
+        
+        // Session
+        sessionId: null,
+        nonce: null,
+        sessionStart: 0,
         
         // Quality tracking
-        goodFrameCount: 0,
-        lastFace: null,
-        checks: {},
+        currentQuality: {},
+        poseHistory: [],
+        landmarkHistory: [],
         
         // Capture
-        capturedShots: [],
-        shotScores: [],
+        capturedFrames: [],
+        captureSchedule: [],
+        lastCaptureTime: 0,
+        validFrameCount: 0,
+        
+        // Soft signals
+        jitterScore: 0,
+        entropyScore: 0,
+        uniformityScore: 0,
     };
 
     // ======================== DOM ========================
     const $ = id => document.getElementById(id);
     const video = $('video');
     const canvas = $('canvas');
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const cropCanvas = $('cropCanvas');
+    const cropCtx = cropCanvas.getContext('2d');
 
     // ======================== INITIALIZATION ========================
     
     async function initialize() {
-        updateModelStatus('Loading face detection...', false);
+        showLoading('Loading MediaPipe...');
         
-        // Try to load TensorFlow.js model
-        const tfLoaded = await loadTFModel();
-        
-        if (tfLoaded) {
-            state.mode = 'tfjs';
-            updateModelStatus('Ready (Browser AI)', true);
-            $('checksMode').textContent = 'Browser AI';
-            $('modeText').textContent = 'Browser AI';
-            $('modeDot').classList.add('active');
-        } else {
-            // Fallback to server-side
-            state.mode = 'server';
-            updateModelStatus('Ready (Server Mode)', true);
-            $('checksMode').textContent = 'Server';
-            $('modeText').textContent = 'Server Mode';
-            $('modeDot').classList.add('active');
-        }
-        
-        $('startBtn').disabled = false;
-        $('startBtn').textContent = 'Start Verification';
-    }
-    
-    async function loadTFModel() {
         try {
-            // Set timeout for model loading
-            const loadPromise = (async () => {
-                const model = faceDetection.SupportedModels.MediaPipeFaceDetector;
-                state.tfModel = await faceDetection.createDetector(model, {
-                    runtime: 'tfjs',
-                    maxFaces: 1,
-                    modelType: 'short'
-                });
-                return true;
-            })();
+            const vision = await FilesetResolver.forVisionTasks(
+                'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm'
+            );
             
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Timeout')), CONFIG.TF_MODEL_LOAD_TIMEOUT);
+            // Face Detector
+            state.faceDetector = await FaceDetector.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
+                    delegate: 'GPU'
+                },
+                runningMode: 'VIDEO',
+                minDetectionConfidence: 0.5
             });
             
-            await Promise.race([loadPromise, timeoutPromise]);
-            console.log('✓ TensorFlow.js model loaded');
+            // Face Landmarker
+            state.faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+                    delegate: 'GPU'
+                },
+                runningMode: 'VIDEO',
+                numFaces: 1,
+                minFaceDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5,
+                outputFaceBlendshapes: true
+            });
+            
+            console.log('✓ MediaPipe loaded');
+            
+            hideLoading();
+            $('modeLabel').textContent = 'MediaPipe WASM';
+            $('startBtn').textContent = 'Start Verification';
+            $('startBtn').disabled = false;
+            
+        } catch (error) {
+            console.error('MediaPipe failed:', error);
+            $('loadingText').textContent = 'Failed to load. Please refresh.';
+        }
+    }
+
+    // ======================== SESSION MANAGEMENT ========================
+    
+    async function startSession() {
+        try {
+            const response = await fetch(`${CONFIG.API_URL}/session/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (!response.ok) throw new Error('Session failed');
+            
+            const data = await response.json();
+            state.sessionId = data.session_id;
+            state.nonce = data.nonce;
+            state.sessionStart = Date.now();
+            
+            console.log('✓ Session started:', state.sessionId);
             return true;
             
         } catch (error) {
-            console.warn('TensorFlow.js failed to load:', error);
-            return false;
+            console.error('Session error:', error);
+            // Continue without session for demo
+            state.sessionId = 'demo-' + Date.now();
+            state.nonce = Math.random().toString(36).substring(2);
+            state.sessionStart = Date.now();
+            return true;
         }
     }
     
-    function updateModelStatus(text, ready) {
-        $('modelStatusText').textContent = text;
-        if (ready) {
-            $('modelStatus').innerHTML = `<span style="color: var(--success)">✓</span> ${text}`;
-        }
-    }
-
-    // ======================== FACE DETECTION ========================
-    
-    // TensorFlow.js detection
-    async function detectFaceTF() {
-        if (!state.tfModel) return null;
+    function generateCaptureSchedule() {
+        // Randomized capture times within the window
+        const schedule = [];
+        const windowMs = CONFIG.CAPTURE_WINDOW_MS;
+        const numFrames = CONFIG.TOTAL_FRAMES;
+        const minSpacing = CONFIG.MIN_FRAME_SPACING_MS;
         
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0);
+        // Divide window into segments with randomization
+        const segmentSize = windowMs / numFrames;
         
-        try {
-            const faces = await state.tfModel.estimateFaces(canvas);
-            if (faces.length === 0) return null;
-            
-            const face = faces[0];
-            const keypoints = {};
-            face.keypoints.forEach(kp => {
-                keypoints[kp.name] = { x: kp.x, y: kp.y };
-            });
-            
-            return {
-                box: face.box,
-                keypoints,
-                score: face.score || 0.9
-            };
-        } catch (e) {
-            console.error('TF detection error:', e);
-            return null;
-        }
-    }
-    
-    // Server-side detection (fallback)
-    async function detectFaceServer(imageData) {
-        try {
-            const response = await fetch(`${CONFIG.API_URL}/analyze`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: imageData })
-            });
-            
-            if (!response.ok) return null;
-            return await response.json();
-        } catch (e) {
-            console.error('Server detection error:', e);
-            return null;
-        }
-    }
-
-    // ======================== QUALITY CHECKS ========================
-    
-    function runQualityChecksTF(face) {
-        const w = canvas.width;
-        const h = canvas.height;
-        const checks = { face: false, position: false, size: false, eyes: false, angle: false, stable: false };
-        let message = 'Position your face in the oval';
-        let qualityScore = 0;
-        
-        if (!face || !face.box) {
-            return { checks, allPass: false, message, qualityScore };
-        }
-        checks.face = true;
-        qualityScore += 0.15;
-        
-        const box = face.box;
-        const kp = face.keypoints;
-        
-        // Size
-        const sizeRatio = (box.width * box.height) / (w * h);
-        if (sizeRatio < CONFIG.MIN_FACE_RATIO) {
-            message = 'Move closer';
-        } else if (sizeRatio > CONFIG.MAX_FACE_RATIO) {
-            message = 'Move back';
-        } else {
-            checks.size = true;
-            qualityScore += 0.15;
+        for (let i = 0; i < numFrames; i++) {
+            const baseTime = i * segmentSize;
+            const jitter = Math.random() * (segmentSize - minSpacing);
+            schedule.push(Math.round(baseTime + jitter));
         }
         
-        // Position (mirrored video)
-        const cx = (box.xMin + box.width / 2) / w;
-        const cy = (box.yMin + box.height / 2) / h;
-        const offX = cx - 0.5;
-        const offY = cy - 0.5;
-        
-        if (Math.abs(offX) > CONFIG.CENTER_TOLERANCE_X) {
-            message = offX > 0 ? 'Move left' : 'Move right';
-        } else if (Math.abs(offY) > CONFIG.CENTER_TOLERANCE_Y) {
-            message = offY > 0 ? 'Move up' : 'Move down';
-        } else {
-            checks.position = true;
-            qualityScore += 0.15;
-        }
-        
-        // Angle
-        if (kp.leftEye && kp.rightEye && kp.noseTip) {
-            const eyeDist = Math.abs(kp.rightEye.x - kp.leftEye.x);
-            const eyeMidX = (kp.leftEye.x + kp.rightEye.x) / 2;
-            const eyeMidY = (kp.leftEye.y + kp.rightEye.y) / 2;
-            
-            const noseOffsetX = (kp.noseTip.x - eyeMidX) / eyeDist;
-            const yaw = Math.abs(noseOffsetX * 45);
-            
-            const noseOffsetY = (kp.noseTip.y - eyeMidY) / eyeDist;
-            const pitch = noseOffsetY * 30;
-            
-            if (yaw > CONFIG.MAX_YAW) {
-                message = 'Look straight at camera';
-            } else if (Math.abs(pitch) > CONFIG.MAX_PITCH) {
-                message = pitch > 0 ? 'Raise your head' : 'Lower your head';
-            } else {
-                checks.angle = true;
-                qualityScore += 0.2;
+        // Ensure minimum spacing
+        for (let i = 1; i < schedule.length; i++) {
+            if (schedule[i] - schedule[i-1] < minSpacing) {
+                schedule[i] = schedule[i-1] + minSpacing;
             }
         }
         
-        // Eyes (confidence check)
-        if (face.score > 0.85) {
-            checks.eyes = true;
-            qualityScore += 0.15;
-        } else {
-            message = 'Keep eyes open';
-        }
-        
-        // Stability
-        if (state.lastFace && state.lastFace.box) {
-            const dx = Math.abs(box.xMin - state.lastFace.box.xMin);
-            const dy = Math.abs(box.yMin - state.lastFace.box.yMin);
-            if (Math.sqrt(dx*dx + dy*dy) < CONFIG.MAX_MOVEMENT) {
-                checks.stable = true;
-                qualityScore += 0.2;
-            } else {
-                message = 'Hold still';
-            }
-        }
-        
-        state.lastFace = { box: { ...box }, keypoints: { ...kp } };
-        
-        const allPass = Object.values(checks).every(v => v);
-        if (allPass) message = 'Perfect! Hold still...';
-        
-        return { checks, allPass, message, qualityScore };
+        console.log('Capture schedule:', schedule);
+        return schedule;
     }
+
+    // ======================== HARD GATES ========================
     
-    function runQualityChecksServer(result) {
-        const checks = {
-            face: result?.face_detected || false,
-            position: result?.face_quality_ok !== false,
-            size: result?.face_quality_ok !== false,
-            eyes: (result?.scores?.blur || 0) > 0.4,
-            angle: (result?.scores?.color || 0) > 0.4,
-            stable: true  // Can't check stability server-side per frame
+    function checkHardGates(detection, landmarks, blendshapes, imageData) {
+        const gates = {
+            face: false,
+            size: false,
+            pose: false,
+            eyes: false,
+            light: false,
+            sharp: false,
+            landmarks: false,
+            motion: false
         };
         
-        let message = result?.quality_message || 'Position your face';
-        if (!result?.face_detected) message = 'No face detected';
+        let message = 'Position your face in the oval';
+        const w = canvas.width;
+        const h = canvas.height;
         
-        const allPass = result?.face_detected && result?.face_quality_ok !== false;
-        const qualityScore = result?.confidence || 0;
+        // 1. Face detected with confidence
+        if (!detection || detection.categories[0].score < CONFIG.FACE_CONFIDENCE) {
+            message = 'No face detected';
+            return { gates, allPass: false, message, pose: null };
+        }
+        gates.face = true;
         
-        return { checks, allPass, message, qualityScore };
+        const bbox = detection.boundingBox;
+        
+        // 2. Face size ratio
+        const faceArea = bbox.width * bbox.height;
+        const frameArea = w * h;
+        const ratio = faceArea / frameArea;
+        
+        if (ratio < CONFIG.FACE_RATIO_MIN) {
+            message = 'Move closer';
+        } else if (ratio > CONFIG.FACE_RATIO_MAX) {
+            message = 'Move back';
+        } else {
+            gates.size = true;
+        }
+        
+        // 3. Pose estimation (from landmarks) - STRICT for reliable eye detection
+        const pose = estimatePose(landmarks);
+        
+        // Pose must be frontal for reliable eye detection
+        if (Math.abs(pose.yaw) > CONFIG.MAX_YAW) {
+            message = pose.yaw > 0 ? 'Turn head left' : 'Turn head right';
+        } else if (Math.abs(pose.pitch) > 12) {  // STRICT pitch for eye detection
+            message = pose.pitch > 0 ? 'Look up at camera' : 'Raise your head';
+        } else if (Math.abs(pose.roll) > CONFIG.MAX_ROLL) {
+            message = 'Straighten head';
+        } else {
+            gates.pose = true;
+        }
+        
+        // 4. Eyes open check - Only reliable when pose is frontal
+        let eyesOpen = false;
+        let ear = { left: 0, right: 0 };
+        
+        if (!gates.pose) {
+            // Can't reliably check eyes if pose is wrong
+            gates.eyes = false;
+            ear = { left: '?', right: '?' };
+        } else {
+            // Method 1: Blendshapes
+            let blendshapeCheck = null;
+            if (blendshapes && blendshapes.length > 0 && blendshapes[0].categories) {
+                const shapes = blendshapes[0].categories;
+                const eyeBlinkLeft = shapes.find(s => s.categoryName === 'eyeBlinkLeft');
+                const eyeBlinkRight = shapes.find(s => s.categoryName === 'eyeBlinkRight');
+                
+                if (eyeBlinkLeft && eyeBlinkRight) {
+                    const leftBlink = eyeBlinkLeft.score;
+                    const rightBlink = eyeBlinkRight.score;
+                    ear = { left: (1-leftBlink).toFixed(2), right: (1-rightBlink).toFixed(2) };
+                    blendshapeCheck = leftBlink < 0.35 && rightBlink < 0.35;
+                    console.log(`Eyes [blend]: L=${leftBlink.toFixed(2)} R=${rightBlink.toFixed(2)} → ${blendshapeCheck}`);
+                }
+            }
+            
+            // Method 2: Pixel-based eye region analysis
+            let pixelCheck = analyzeEyeRegions(landmarks, imageData, canvas.width, canvas.height);
+            console.log(`Eyes [pixel]: ${JSON.stringify(pixelCheck)}`);
+            
+            // Method 3: Geometric EAR
+            const earCalc = calculateEAR(landmarks);
+            const earCheck = earCalc.left >= 0.24 && earCalc.right >= 0.24;
+            console.log(`Eyes [EAR]: L=${earCalc.left.toFixed(2)} R=${earCalc.right.toFixed(2)} → ${earCheck}`);
+            
+            // Combine checks - need at least 2 of 3 to pass
+            const checks = [blendshapeCheck, pixelCheck.open, earCheck].filter(c => c !== null);
+            const passCount = checks.filter(c => c === true).length;
+            
+            eyesOpen = passCount >= 2 || (checks.length === 1 && checks[0] === true);
+            
+            if (!eyesOpen) {
+                message = 'Open both eyes';
+                gates.eyes = false;
+            } else {
+                gates.eyes = true;
+            }
+        }
+        
+        // 5. Lighting check
+        const lighting = analyzeLighting(imageData);
+        if (lighting.mean < CONFIG.LUMA_MIN) {
+            message = 'Too dark - more light needed';
+        } else if (lighting.mean > CONFIG.LUMA_MAX) {
+            message = 'Too bright';
+        } else if (lighting.range < CONFIG.LUMA_RANGE_MIN) {
+            message = 'Low contrast';
+        } else {
+            gates.light = true;
+        }
+        
+        // 6. Sharpness
+        const sharpness = calculateSharpness(imageData);
+        if (sharpness < CONFIG.SHARPNESS_MIN) {
+            message = 'Image blurry - hold still';
+        } else {
+            gates.sharp = true;
+        }
+        
+        // 7. Key landmarks visible
+        const landmarksVisible = checkLandmarksVisible(landmarks);
+        if (!landmarksVisible) {
+            message = 'Face partially hidden';
+        } else {
+            gates.landmarks = true;
+        }
+        
+        // 8. Motion check (natural movement)
+        const hasMotion = checkNaturalMotion(pose);
+        gates.motion = hasMotion || state.capturedFrames.length === 0;
+        
+        const allPass = Object.values(gates).every(v => v);
+        if (allPass) message = 'Perfect - capturing...';
+        
+        return { gates, allPass, message, pose, ear, lighting, sharpness };
+    }
+
+    // ======================== POSE ESTIMATION ========================
+    
+    function estimatePose(landmarks) {
+        if (!landmarks || landmarks.length < 468) {
+            return { yaw: 0, pitch: 0, roll: 0 };
+        }
+        
+        // Key landmark indices
+        const noseTip = landmarks[4];
+        const leftEyeOuter = landmarks[33];
+        const rightEyeOuter = landmarks[263];
+        const leftMouth = landmarks[61];
+        const rightMouth = landmarks[291];
+        const chin = landmarks[152];
+        const forehead = landmarks[10];
+        
+        // Eye distance for normalization
+        const eyeDist = Math.sqrt(
+            Math.pow(rightEyeOuter.x - leftEyeOuter.x, 2) +
+            Math.pow(rightEyeOuter.y - leftEyeOuter.y, 2)
+        );
+        
+        // Yaw: nose offset from eye midpoint
+        const eyeMidX = (leftEyeOuter.x + rightEyeOuter.x) / 2;
+        const noseOffsetX = (noseTip.x - eyeMidX) / eyeDist;
+        const yaw = Math.atan(noseOffsetX * 2) * (180 / Math.PI) * 1.5;
+        
+        // Pitch: vertical nose position relative to eyes
+        const eyeMidY = (leftEyeOuter.y + rightEyeOuter.y) / 2;
+        const noseOffsetY = (noseTip.y - eyeMidY) / eyeDist;
+        const pitch = Math.atan(noseOffsetY) * (180 / Math.PI) * 0.8;  // Reduced multiplier
+        
+        // Roll: eye line angle
+        const roll = Math.atan2(
+            rightEyeOuter.y - leftEyeOuter.y,
+            rightEyeOuter.x - leftEyeOuter.x
+        ) * (180 / Math.PI);
+        
+        return { yaw, pitch, roll };
+    }
+
+    // ======================== EYE ASPECT RATIO ========================
+    
+    function calculateEAR(landmarks) {
+        if (!landmarks || landmarks.length < 468) {
+            return { left: 0.3, right: 0.3 }; // Default to "open" if no landmarks
+        }
+        
+        try {
+            // Left eye landmarks - with validation
+            const leftEye = {
+                p1: landmarks[33],  // outer
+                p2: landmarks[160], // top1
+                p3: landmarks[158], // top2
+                p4: landmarks[133], // inner
+                p5: landmarks[153], // bottom1
+                p6: landmarks[144]  // bottom2
+            };
+            
+            // Right eye landmarks
+            const rightEye = {
+                p1: landmarks[362], // inner
+                p2: landmarks[385], // top1
+                p3: landmarks[387], // top2
+                p4: landmarks[263], // outer
+                p5: landmarks[373], // bottom1
+                p6: landmarks[380]  // bottom2
+            };
+            
+            const calcEAR = (eye) => {
+                // Validate all points exist
+                if (!eye.p1 || !eye.p2 || !eye.p3 || !eye.p4 || !eye.p5 || !eye.p6) {
+                    return 0.3; // Default
+                }
+                
+                // Get coordinates - handle both {x,y} and {x,y,z} formats
+                const getCoord = (p) => ({
+                    x: p.x !== undefined ? p.x : 0,
+                    y: p.y !== undefined ? p.y : 0
+                });
+                
+                const p1 = getCoord(eye.p1);
+                const p2 = getCoord(eye.p2);
+                const p3 = getCoord(eye.p3);
+                const p4 = getCoord(eye.p4);
+                const p5 = getCoord(eye.p5);
+                const p6 = getCoord(eye.p6);
+                
+                const vertical1 = Math.sqrt(
+                    Math.pow(p2.x - p6.x, 2) + Math.pow(p2.y - p6.y, 2)
+                );
+                const vertical2 = Math.sqrt(
+                    Math.pow(p3.x - p5.x, 2) + Math.pow(p3.y - p5.y, 2)
+                );
+                const horizontal = Math.sqrt(
+                    Math.pow(p1.x - p4.x, 2) + Math.pow(p1.y - p4.y, 2)
+                );
+                
+                // Prevent division by zero
+                if (horizontal < 0.001) {
+                    return 0.3;
+                }
+                
+                const ear = (vertical1 + vertical2) / (2 * horizontal);
+                
+                // Sanity check - EAR should be between 0 and 1
+                if (isNaN(ear) || ear < 0 || ear > 1) {
+                    return 0.3;
+                }
+                
+                return ear;
+            };
+            
+            return {
+                left: calcEAR(leftEye),
+                right: calcEAR(rightEye)
+            };
+        } catch (e) {
+            console.error('EAR calculation error:', e);
+            return { left: 0.3, right: 0.3 };
+        }
+    }
+    
+    // Pixel-based eye region analysis
+    // Open eyes have more contrast (iris/pupil vs white) than closed eyes (uniform skin)
+    function analyzeEyeRegions(landmarks, imageData, width, height) {
+        if (!landmarks || landmarks.length < 468 || !imageData) {
+            return { open: null, leftContrast: 0, rightContrast: 0 };
+        }
+        
+        try {
+            const data = imageData.data;
+            
+            // Helper to safely get landmark
+            const getLM = (idx) => {
+                const lm = landmarks[idx];
+                if (!lm) return null;
+                return { x: lm.x || 0, y: lm.y || 0 };
+            };
+            
+            // Get eye landmarks
+            const l33 = getLM(33), l133 = getLM(133), l159 = getLM(159), l145 = getLM(145);
+            const l362 = getLM(362), l263 = getLM(263), l386 = getLM(386), l374 = getLM(374);
+            
+            if (!l33 || !l133 || !l159 || !l145 || !l362 || !l263 || !l386 || !l374) {
+                return { open: null, leftContrast: 0, rightContrast: 0 };
+            }
+            
+            // Left eye center and size
+            const leftEyeCenter = {
+                x: (l33.x + l133.x) / 2,
+                y: (l159.y + l145.y) / 2
+            };
+            const leftEyeWidth = Math.abs(l133.x - l33.x);
+            const leftEyeHeight = Math.abs(l145.y - l159.y);
+            
+            // Right eye center and size
+            const rightEyeCenter = {
+                x: (l362.x + l263.x) / 2,
+                y: (l386.y + l374.y) / 2
+            };
+            const rightEyeWidth = Math.abs(l263.x - l362.x);
+            const rightEyeHeight = Math.abs(l374.y - l386.y);
+            
+            // Analyze contrast in each eye region
+            const analyzeRegion = (cx, cy, w, h) => {
+                if (w < 0.01 || h < 0.01) {
+                    return { contrast: 0, hasDarkSpot: false, mean: 128 };
+                }
+                
+                const x1 = Math.floor((cx - w * 0.4) * width);
+                const x2 = Math.floor((cx + w * 0.4) * width);
+                const y1 = Math.floor((cy - h * 0.4) * height);
+                const y2 = Math.floor((cy + h * 0.4) * height);
+                
+                let min = 255, max = 0, sum = 0, count = 0;
+                
+                for (let y = Math.max(0, y1); y < Math.min(height, y2); y++) {
+                    for (let x = Math.max(0, x1); x < Math.min(width, x2); x++) {
+                        const idx = (y * width + x) * 4;
+                        const gray = (data[idx] + data[idx+1] + data[idx+2]) / 3;
+                        if (gray < min) min = gray;
+                        if (gray > max) max = gray;
+                        sum += gray;
+                        count++;
+                    }
+                }
+                
+                if (count === 0) {
+                    return { contrast: 0, hasDarkSpot: false, mean: 128 };
+                }
+                
+                const mean = sum / count;
+                const contrast = max - min;
+                const hasDarkSpot = min < mean * 0.65;
+                
+                return { contrast, hasDarkSpot, mean };
+            };
+            
+            const leftAnalysis = analyzeRegion(leftEyeCenter.x, leftEyeCenter.y, leftEyeWidth, leftEyeHeight);
+            const rightAnalysis = analyzeRegion(rightEyeCenter.x, rightEyeCenter.y, rightEyeWidth, rightEyeHeight);
+            
+            // Open eyes: higher contrast + dark spot (pupil)
+            const leftOpen = leftAnalysis.contrast > 30 && leftAnalysis.hasDarkSpot;
+            const rightOpen = rightAnalysis.contrast > 30 && rightAnalysis.hasDarkSpot;
+            
+            return {
+                open: leftOpen && rightOpen,
+                leftContrast: Math.round(leftAnalysis.contrast),
+                rightContrast: Math.round(rightAnalysis.contrast),
+                leftDark: leftAnalysis.hasDarkSpot,
+                rightDark: rightAnalysis.hasDarkSpot
+            };
+        } catch (e) {
+            console.error('Eye region analysis error:', e);
+            return { open: null, leftContrast: 0, rightContrast: 0 };
+        }
+    }
+
+    // ======================== IMAGE ANALYSIS ========================
+    
+    function analyzeLighting(imageData) {
+        const data = imageData.data;
+        let sum = 0;
+        let min = 255;
+        let max = 0;
+        const samples = Math.floor(data.length / 16); // Sample every 4th pixel
+        
+        for (let i = 0; i < data.length; i += 16) {
+            const luma = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+            sum += luma;
+            if (luma < min) min = luma;
+            if (luma > max) max = luma;
+        }
+        
+        return {
+            mean: sum / samples,
+            range: max - min,
+            min,
+            max
+        };
+    }
+    
+    function calculateSharpness(imageData) {
+        // Laplacian variance
+        const w = canvas.width;
+        const h = canvas.height;
+        const data = imageData.data;
+        
+        let sum = 0;
+        let sumSq = 0;
+        let count = 0;
+        
+        // Sample center region
+        const startX = Math.floor(w * 0.25);
+        const endX = Math.floor(w * 0.75);
+        const startY = Math.floor(h * 0.25);
+        const endY = Math.floor(h * 0.75);
+        
+        for (let y = startY + 1; y < endY - 1; y += 2) {
+            for (let x = startX + 1; x < endX - 1; x += 2) {
+                const idx = (y * w + x) * 4;
+                const idxUp = ((y-1) * w + x) * 4;
+                const idxDown = ((y+1) * w + x) * 4;
+                const idxLeft = (y * w + (x-1)) * 4;
+                const idxRight = (y * w + (x+1)) * 4;
+                
+                // Grayscale Laplacian
+                const center = (data[idx] + data[idx+1] + data[idx+2]) / 3;
+                const up = (data[idxUp] + data[idxUp+1] + data[idxUp+2]) / 3;
+                const down = (data[idxDown] + data[idxDown+1] + data[idxDown+2]) / 3;
+                const left = (data[idxLeft] + data[idxLeft+1] + data[idxLeft+2]) / 3;
+                const right = (data[idxRight] + data[idxRight+1] + data[idxRight+2]) / 3;
+                
+                const laplacian = Math.abs(4 * center - up - down - left - right);
+                sum += laplacian;
+                sumSq += laplacian * laplacian;
+                count++;
+            }
+        }
+        
+        const mean = sum / count;
+        const variance = (sumSq / count) - (mean * mean);
+        
+        return variance;
+    }
+    
+    function checkLandmarksVisible(landmarks) {
+        if (!landmarks || landmarks.length < 468) return false;
+        
+        // Check key landmarks have reasonable confidence
+        const keyIndices = [
+            4,    // nose tip
+            33,   // left eye outer
+            263,  // right eye outer
+            61,   // left mouth
+            291,  // right mouth
+            152,  // chin
+            10    // forehead
+        ];
+        
+        for (const idx of keyIndices) {
+            const lm = landmarks[idx];
+            if (!lm || lm.x < 0.05 || lm.x > 0.95 || lm.y < 0.05 || lm.y > 0.95) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+    // ======================== MOTION ANALYSIS ========================
+    
+    function checkNaturalMotion(currentPose) {
+        if (state.poseHistory.length < 3) {
+            state.poseHistory.push(currentPose);
+            return true;
+        }
+        
+        state.poseHistory.push(currentPose);
+        if (state.poseHistory.length > 30) {
+            state.poseHistory.shift();
+        }
+        
+        // Check for sufficient pose variation
+        let poseChangeCount = 0;
+        
+        for (let i = 1; i < state.poseHistory.length; i++) {
+            const prev = state.poseHistory[i-1];
+            const curr = state.poseHistory[i];
+            
+            const yawChange = Math.abs(curr.yaw - prev.yaw);
+            const pitchChange = Math.abs(curr.pitch - prev.pitch);
+            
+            if (yawChange >= CONFIG.MIN_POSE_CHANGE_YAW || 
+                pitchChange >= CONFIG.MIN_POSE_CHANGE_PITCH) {
+                poseChangeCount++;
+            }
+        }
+        
+        return poseChangeCount >= CONFIG.FRAMES_WITH_POSE_CHANGE;
+    }
+    
+    function calculateJitter(landmarks) {
+        if (!landmarks || state.landmarkHistory.length < 5) {
+            if (landmarks) {
+                state.landmarkHistory.push(landmarks.slice(0, 10)); // Store first 10 landmarks
+            }
+            return 0.5;
+        }
+        
+        state.landmarkHistory.push(landmarks.slice(0, 10));
+        if (state.landmarkHistory.length > 15) {
+            state.landmarkHistory.shift();
+        }
+        
+        // Calculate average movement
+        let totalMovement = 0;
+        for (let i = 1; i < state.landmarkHistory.length; i++) {
+            for (let j = 0; j < 10; j++) {
+                const prev = state.landmarkHistory[i-1][j];
+                const curr = state.landmarkHistory[i][j];
+                totalMovement += Math.sqrt(
+                    Math.pow(curr.x - prev.x, 2) + Math.pow(curr.y - prev.y, 2)
+                );
+            }
+        }
+        
+        const avgMovement = totalMovement / (state.landmarkHistory.length * 10);
+        
+        // Too static is suspicious (video replay), too jittery is bad quality
+        if (avgMovement < 0.001) return 0.2;  // Suspiciously static
+        if (avgMovement > 0.05) return 0.3;   // Too jittery
+        return 0.8;  // Good natural movement
+    }
+    
+    function calculateTextureEntropy(imageData) {
+        // Simple entropy estimation
+        const histogram = new Array(256).fill(0);
+        const data = imageData.data;
+        
+        for (let i = 0; i < data.length; i += 4) {
+            const gray = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
+            histogram[gray]++;
+        }
+        
+        const totalPixels = data.length / 4;
+        let entropy = 0;
+        
+        for (let i = 0; i < 256; i++) {
+            if (histogram[i] > 0) {
+                const p = histogram[i] / totalPixels;
+                entropy -= p * Math.log2(p);
+            }
+        }
+        
+        return Math.min(1, entropy / 8); // Normalize to 0-1
+    }
+
+    // ======================== FRAME CAPTURE ========================
+    
+    function shouldCaptureNow() {
+        if (state.capturedFrames.length >= CONFIG.TOTAL_FRAMES) return false;
+        
+        const elapsed = Date.now() - state.sessionStart;
+        const nextCaptureTime = state.captureSchedule[state.capturedFrames.length];
+        
+        if (elapsed >= nextCaptureTime) {
+            const timeSinceLast = Date.now() - state.lastCaptureTime;
+            return timeSinceLast >= CONFIG.MIN_FRAME_SPACING_MS;
+        }
+        
+        return false;
+    }
+    
+    function captureFrame(bbox, quality) {
+        // Crop face region
+        const padding = 0.3;
+        const x = Math.max(0, bbox.originX - bbox.width * padding);
+        const y = Math.max(0, bbox.originY - bbox.height * padding);
+        const w = Math.min(canvas.width - x, bbox.width * (1 + padding * 2));
+        const h = Math.min(canvas.height - y, bbox.height * (1 + padding * 2));
+        
+        // Draw cropped and resized to 224x224
+        cropCtx.drawImage(
+            canvas, 
+            x, y, w, h,
+            0, 0, CONFIG.CROP_SIZE, CONFIG.CROP_SIZE
+        );
+        
+        const imageData = cropCanvas.toDataURL('image/jpeg', CONFIG.JPEG_QUALITY);
+        
+        // Generate hash for anti-tamper
+        const frameId = state.capturedFrames.length;
+        const hashInput = `${imageData.slice(-100)}|${state.nonce}|${frameId}`;
+        const hash = simpleHash(hashInput);
+        
+        const frame = {
+            image: imageData,
+            frame_id: frameId,
+            timestamp: Date.now() - state.sessionStart,
+            hash: hash,
+            metadata: {
+                pose: quality.pose,
+                ear: quality.ear,
+                lighting: quality.lighting,
+                sharpness: quality.sharpness,
+                jitter: state.jitterScore,
+                entropy: state.entropyScore
+            }
+        };
+        
+        state.capturedFrames.push(frame);
+        state.lastCaptureTime = Date.now();
+        
+        console.log(`✓ Captured frame ${frameId + 1}/${CONFIG.TOTAL_FRAMES}`);
+        
+        return frame;
+    }
+    
+    function simpleHash(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash;
+        }
+        return hash.toString(16);
     }
 
     // ======================== UI UPDATES ========================
     
-    function updateChecksUI(checks) {
-        setCheckState('checkFace', checks.face);
-        setCheckState('checkPosition', checks.position);
-        setCheckState('checkSize', checks.size);
-        setCheckState('checkEyes', checks.eyes);
-        setCheckState('checkAngle', checks.angle);
-        setCheckState('checkStable', checks.stable);
+    function updateQualityUI(gates) {
+        const setGate = (id, pass) => {
+            const el = $(id);
+            el.className = `quality-item ${pass ? 'pass' : 'fail'}`;
+        };
+        
+        setGate('qFace', gates.face);
+        setGate('qSize', gates.size);
+        setGate('qPose', gates.pose);
+        setGate('qEyes', gates.eyes);
+        setGate('qLight', gates.light);
+        setGate('qSharp', gates.sharp);
+        setGate('qLandmarks', gates.landmarks);
+        setGate('qMotion', gates.motion);
     }
     
-    function setCheckState(id, pass) {
-        const el = $(id);
-        el.className = `check-item ${pass ? 'pass' : 'fail'}`;
-        el.querySelector('.check-icon').textContent = pass ? '✓' : '✗';
+    function updateDebugUI(quality) {
+        $('dbgFps').textContent = state.fps.toFixed(0);
+        $('dbgFps').className = `debug-value ${state.fps >= 6 ? 'pass' : 'fail'}`;
+        
+        if (quality.pose) {
+            $('dbgYaw').textContent = quality.pose.yaw.toFixed(1) + '°';
+            $('dbgYaw').className = `debug-value ${Math.abs(quality.pose.yaw) <= CONFIG.MAX_YAW ? 'pass' : 'fail'}`;
+            
+            $('dbgPitch').textContent = quality.pose.pitch.toFixed(1) + '°';
+            $('dbgPitch').className = `debug-value ${Math.abs(quality.pose.pitch) <= CONFIG.MAX_PITCH ? 'pass' : 'fail'}`;
+        }
+        
+        if (quality.ear) {
+            const minEar = Math.min(parseFloat(quality.ear.left), parseFloat(quality.ear.right));
+            $('dbgEar').textContent = minEar.toFixed(2);
+            $('dbgEar').className = `debug-value ${quality.gates?.eyes ? 'pass' : 'fail'}`;
+        }
+        
+        if (quality.lighting) {
+            $('dbgLuma').textContent = quality.lighting.mean.toFixed(0);
+            $('dbgLuma').className = `debug-value ${quality.lighting.mean >= CONFIG.LUMA_MIN && quality.lighting.mean <= CONFIG.LUMA_MAX ? 'pass' : 'fail'}`;
+        }
+        
+        if (quality.sharpness !== undefined) {
+            $('dbgSharp').textContent = quality.sharpness.toFixed(0);
+            $('dbgSharp').className = `debug-value ${quality.sharpness >= CONFIG.SHARPNESS_MIN ? 'pass' : 'fail'}`;
+        }
+        
+        $('dbgFace').textContent = quality.gates?.face ? '✓' : '✗';
+        $('dbgFace').className = `debug-value ${quality.gates?.face ? 'pass' : 'fail'}`;
     }
     
-    function resetChecksUI() {
-        const icons = { checkFace: '👤', checkPosition: '⊕', checkSize: '⤢', checkEyes: '👁', checkAngle: '↔', checkStable: '◎' };
-        Object.keys(icons).forEach(id => {
-            $(id).className = 'check-item';
-            $(id).querySelector('.check-icon').textContent = icons[id];
-        });
+    function updateSignalsUI() {
+        $('sigJitter').textContent = (state.jitterScore * 100).toFixed(0) + '%';
+        $('sigEntropy').textContent = (state.entropyScore * 100).toFixed(0) + '%';
+        $('sigUniform').textContent = (state.uniformityScore * 100).toFixed(0) + '%';
+    }
+    
+    function updateFrameIndicators() {
+        for (let i = 0; i < CONFIG.TOTAL_FRAMES; i++) {
+            const dot = $(`frame${i}`);
+            if (i < state.capturedFrames.length) {
+                dot.className = 'frame-dot captured';
+            } else if (i === state.capturedFrames.length) {
+                dot.className = 'frame-dot current';
+            } else {
+                dot.className = 'frame-dot';
+            }
+        }
     }
     
     function updateStatus(icon, title, subtitle, ovalClass) {
@@ -820,30 +1448,18 @@
         $('faceOval').className = `face-oval ${ovalClass}`;
     }
     
-    function updateProgress(progress) {
-        $('progressFill').style.width = `${Math.min(100, progress)}%`;
+    function updateProgress() {
+        const progress = (state.capturedFrames.length / CONFIG.TOTAL_FRAMES) * 100;
+        $('progressFill').style.width = `${progress}%`;
     }
     
-    function updateShotsUI() {
-        for (let i = 1; i <= 3; i++) {
-            const dot = $(`shot${i}`);
-            if (i <= state.capturedShots.length) {
-                dot.className = 'shot-dot captured';
-            } else if (i === state.capturedShots.length + 1 && state.goodFrameCount >= CONFIG.REQUIRED_GOOD_FRAMES) {
-                dot.className = 'shot-dot current';
-            } else {
-                dot.className = 'shot-dot';
-            }
-        }
+    function showLoading(text) {
+        $('loadingOverlay').classList.add('active');
+        $('loadingText').textContent = text;
     }
-
-    // ======================== CAPTURE FRAME ========================
     
-    function captureFrame() {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0);
-        return canvas.toDataURL('image/jpeg', 0.9);
+    function hideLoading() {
+        $('loadingOverlay').classList.remove('active');
     }
 
     // ======================== MAIN DETECTION LOOP ========================
@@ -851,200 +1467,65 @@
     async function detectionLoop() {
         if (!state.isRunning) return;
         
-        let checks, allPass, message, qualityScore;
-        let frameData = captureFrame();
+        const now = performance.now();
+        state.fps = 1000 / (now - state.lastFrameTime);
+        state.lastFrameTime = now;
         
-        if (state.mode === 'tfjs') {
-            // TensorFlow.js detection
-            const face = await detectFaceTF();
-            ({ checks, allPass, message, qualityScore } = runQualityChecksTF(face));
-        } else {
-            // Server fallback
-            const result = await detectFaceServer(frameData);
-            ({ checks, allPass, message, qualityScore } = runQualityChecksServer(result));
-        }
+        // Draw frame to canvas
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
         
-        updateChecksUI(checks);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         
-        if (allPass) {
-            state.goodFrameCount++;
+        // Run detection
+        const timestamp = performance.now();
+        const detections = state.faceDetector.detectForVideo(canvas, timestamp);
+        const landmarksResult = state.faceLandmarker.detectForVideo(canvas, timestamp);
+        
+        const detection = detections.detections[0];
+        const landmarks = landmarksResult.faceLandmarks[0];
+        const blendshapes = landmarksResult.faceBlendshapes;
+        
+        // Check hard gates
+        const quality = checkHardGates(detection, landmarks, blendshapes, imageData);
+        
+        // Update soft signals
+        state.jitterScore = calculateJitter(landmarks);
+        state.entropyScore = calculateTextureEntropy(imageData);
+        state.uniformityScore = quality.lighting ? 
+            Math.min(1, quality.lighting.range / 100) : 0.5;
+        
+        // Update UI
+        updateQualityUI(quality.gates);
+        updateDebugUI(quality);
+        updateSignalsUI();
+        updateFrameIndicators();
+        
+        if (quality.allPass) {
+            state.validFrameCount++;
             
-            // Collect shots when quality is good
-            if (state.goodFrameCount >= CONFIG.REQUIRED_GOOD_FRAMES) {
-                // Capture this frame as a shot
-                if (state.capturedShots.length < CONFIG.SHOTS_TO_CAPTURE) {
-                    state.capturedShots.push(frameData);
-                    state.shotScores.push(qualityScore);
-                    updateShotsUI();
-                    
-                    updateStatus('📸', `Captured ${state.capturedShots.length}/${CONFIG.SHOTS_TO_CAPTURE}`, 
-                        'Hold still for more...', 'success');
-                }
+            // Check if should capture
+            if (shouldCaptureNow()) {
+                captureFrame(detection.boundingBox, quality);
+                updateProgress();
                 
-                // Check if we have all shots
-                if (state.capturedShots.length >= CONFIG.SHOTS_TO_CAPTURE) {
+                if (state.capturedFrames.length >= CONFIG.TOTAL_FRAMES) {
                     await submitToServer();
                     return;
                 }
-            } else {
-                const progress = (state.goodFrameCount / CONFIG.REQUIRED_GOOD_FRAMES) * 100;
-                updateProgress(progress);
-                updateStatus('✓', 'Looking good!', 
-                    `Hold still... ${CONFIG.REQUIRED_GOOD_FRAMES - state.goodFrameCount} more`, 'success');
             }
+            
+            updateStatus('✓', 'Looking good!', 
+                `Capturing ${state.capturedFrames.length + 1}/${CONFIG.TOTAL_FRAMES}...`, 'valid');
         } else {
-            state.goodFrameCount = Math.max(0, state.goodFrameCount - 1);
-            updateProgress((state.goodFrameCount / CONFIG.REQUIRED_GOOD_FRAMES) * 100);
-            
-            // Clear captured shots if quality drops significantly
-            if (state.goodFrameCount < CONFIG.REQUIRED_GOOD_FRAMES - 2 && state.capturedShots.length > 0) {
-                state.capturedShots = [];
-                state.shotScores = [];
-                updateShotsUI();
-            }
-            
-            const passCount = Object.values(checks).filter(Boolean).length;
-            if (passCount >= 4) {
-                updateStatus('📸', 'Almost there', message, 'detecting');
-            } else if (checks.face) {
-                updateStatus('⚠️', 'Adjust position', message, 'detecting');
-            } else {
-                updateStatus('👤', 'No face found', message, '');
-            }
+            updateStatus('⚠️', quality.message, 
+                `${state.capturedFrames.length}/${CONFIG.TOTAL_FRAMES} captured`, 
+                quality.gates.face ? 'detecting' : 'invalid');
         }
         
-        const interval = state.mode === 'tfjs' ? CONFIG.DETECTION_INTERVAL_MS : CONFIG.FALLBACK_INTERVAL_MS;
-        state.loopId = setTimeout(detectionLoop, interval);
-    }
-
-    // ======================== SERVER SUBMISSION ========================
-    
-    async function submitToServer() {
-        stopLoop();
-        
-        $('loadingOverlay').classList.add('active');
-        $('loadingText').textContent = 'Verifying liveness...';
-        
-        try {
-            // Send all 3 shots to server
-            const response = await fetch(`${CONFIG.API_URL}/verify-liveness`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    images: state.capturedShots,
-                    scores: state.shotScores
-                })
-            });
-            
-            if (!response.ok) {
-                // Fallback: try single image endpoint
-                const fallbackResponse = await fetch(`${CONFIG.API_URL}/analyze`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ image: state.capturedShots[0] })
-                });
-                
-                if (!fallbackResponse.ok) throw new Error('Server error');
-                
-                const result = await fallbackResponse.json();
-                handleServerResult(result);
-                return;
-            }
-            
-            const result = await response.json();
-            handleServerResult(result);
-            
-        } catch (error) {
-            console.error('Submission error:', error);
-            $('loadingOverlay').classList.remove('active');
-            
-            // Retry
-            updateStatus('⚠️', 'Connection error', 'Retrying...', 'error');
-            state.capturedShots = [];
-            state.shotScores = [];
-            state.goodFrameCount = 0;
-            updateShotsUI();
-            state.isRunning = true;
-            detectionLoop();
-        }
-    }
-    
-    function handleServerResult(result) {
-        $('loadingOverlay').classList.remove('active');
-        
-        const isLive = result.is_live && (result.confidence >= CONFIG.MIN_CONFIDENCE);
-        
-        if (isLive) {
-            showResult(true, result.best_image || state.capturedShots[0]);
-        } else {
-            showResult(false, null, result.attack_type || 'Verification failed');
-        }
-    }
-
-    // ======================== RESULT SCREEN ========================
-    
-    function showResult(success, imageData, errorMsg = '') {
-        stopCamera();
-        
-        $('verificationFlow').classList.add('hidden');
-        $('resultScreen').classList.add('active');
-        
-        if (success) {
-            $('resultIcon').className = 'result-icon success';
-            $('resultIcon').textContent = '✓';
-            $('resultTitle').textContent = 'Verified!';
-            $('resultSubtitle').textContent = 'Identity confirmed successfully';
-            $('resultPhoto').src = imageData;
-            $('resultPhoto').style.display = 'block';
-        } else {
-            $('resultIcon').className = 'result-icon error';
-            $('resultIcon').textContent = '✗';
-            $('resultTitle').textContent = 'Failed';
-            $('resultSubtitle').textContent = errorMsg;
-            $('resultPhoto').style.display = 'none';
-        }
-    }
-    
-    function restart() {
-        $('resultScreen').classList.remove('active');
-        $('verificationFlow').classList.remove('hidden');
-        
-        resetChecksUI();
-        updateProgress(0);
-        updateStatus('👤', 'Ready', 'Tap Start to begin', '');
-        
-        state.goodFrameCount = 0;
-        state.lastFace = null;
-        state.capturedShots = [];
-        state.shotScores = [];
-        updateShotsUI();
-        
-        $('startBtn').disabled = false;
-        $('startBtn').textContent = 'Start Verification';
-    }
-
-    // ======================== CAMERA ========================
-    
-    async function startCamera() {
-        try {
-            state.stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-                audio: false
-            });
-            video.srcObject = state.stream;
-            await video.play();
-            return true;
-        } catch (e) {
-            alert('Cannot access camera');
-            return false;
-        }
-    }
-    
-    function stopCamera() {
-        if (state.stream) {
-            state.stream.getTracks().forEach(t => t.stop());
-            state.stream = null;
-        }
+        // Continue loop
+        state.loopId = setTimeout(detectionLoop, CONFIG.DETECTION_INTERVAL_MS);
     }
     
     function stopLoop() {
@@ -1055,12 +1536,176 @@
         }
     }
 
+    // ======================== SERVER SUBMISSION ========================
+    
+    async function submitToServer() {
+        stopLoop();
+        showLoading('Verifying liveness...');
+        
+        try {
+            const payload = {
+                session_id: state.sessionId,
+                nonce: state.nonce,
+                frames: state.capturedFrames,
+                client_metadata: {
+                    user_agent: navigator.userAgent,
+                    screen: `${screen.width}x${screen.height}`,
+                    capture_duration_ms: Date.now() - state.sessionStart
+                }
+            };
+            
+            const response = await fetch(`${CONFIG.API_URL}/verify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            
+            if (!response.ok) throw new Error(`Server error: ${response.status}`);
+            
+            const result = await response.json();
+            
+            hideLoading();
+            showResult(result);
+            
+        } catch (error) {
+            console.error('Submission error:', error);
+            hideLoading();
+            
+            // Show error result
+            showResult({
+                decision: 'ERROR',
+                message: 'Connection error. Please try again.'
+            });
+        }
+    }
+
+    // ======================== RESULT ========================
+    
+    function showResult(result) {
+        stopCamera();
+        
+        $('mainFlow').classList.add('hidden');
+        $('resultScreen').classList.add('active');
+        
+        const isPass = result.decision === 'PASS';
+        
+        $('resultIcon').className = `result-icon ${isPass ? 'success' : 'error'}`;
+        $('resultIcon').textContent = isPass ? '✓' : '✗';
+        $('resultTitle').textContent = isPass ? 'Verified!' : 'Verification Failed';
+        $('resultSubtitle').textContent = result.message || 
+            (isPass ? 'Identity confirmed' : 'Please try again');
+        
+        if (isPass && state.capturedFrames.length > 0) {
+            $('resultPhoto').src = state.capturedFrames[0].image;
+            $('resultPhoto').style.display = 'block';
+        } else {
+            $('resultPhoto').style.display = 'none';
+        }
+    }
+    
+    function restart() {
+        $('resultScreen').classList.remove('active');
+        $('mainFlow').classList.remove('hidden');
+        
+        // Reset state
+        state.capturedFrames = [];
+        state.poseHistory = [];
+        state.landmarkHistory = [];
+        state.validFrameCount = 0;
+        
+        // Reset UI
+        updateProgress();
+        updateFrameIndicators();
+        updateStatus('👤', 'Ready', 'Tap Start to begin', '');
+        
+        $('startBtn').disabled = false;
+        $('startBtn').textContent = 'Start Verification';
+    }
+
+    // ======================== CAMERA ========================
+    
+    async function startCamera() {
+        try {
+            // Detect if mobile
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            
+            // Mobile-optimized constraints
+            const constraints = {
+                video: {
+                    facingMode: 'user',
+                    width: { ideal: isMobile ? 480 : 640 },
+                    height: { ideal: isMobile ? 640 : 480 },
+                    frameRate: { ideal: 15, max: 30 }
+                },
+                audio: false
+            };
+            
+            // Try to get camera with ideal constraints
+            try {
+                state.stream = await navigator.mediaDevices.getUserMedia(constraints);
+            } catch (e) {
+                // Fallback to basic constraints
+                console.warn('Ideal constraints failed, trying fallback:', e);
+                state.stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user' },
+                    audio: false
+                });
+            }
+            
+            video.srcObject = state.stream;
+            
+            // Wait for video to be ready
+            await new Promise((resolve, reject) => {
+                video.onloadedmetadata = () => {
+                    video.play()
+                        .then(resolve)
+                        .catch(reject);
+                };
+                video.onerror = reject;
+                setTimeout(() => reject(new Error('Video load timeout')), 10000);
+            });
+            
+            console.log(`Camera started: ${video.videoWidth}x${video.videoHeight}`);
+            return true;
+            
+        } catch (error) {
+            console.error('Camera error:', error);
+            
+            // User-friendly error messages
+            let message = 'Cannot access camera.';
+            if (error.name === 'NotAllowedError') {
+                message = 'Camera permission denied. Please allow camera access and try again.';
+            } else if (error.name === 'NotFoundError') {
+                message = 'No camera found. Please ensure your device has a front camera.';
+            } else if (error.name === 'NotReadableError') {
+                message = 'Camera is in use by another app. Please close other apps and try again.';
+            }
+            
+            alert(message);
+            return false;
+        }
+    }
+    
+    function stopCamera() {
+        if (state.stream) {
+            state.stream.getTracks().forEach(t => t.stop());
+            state.stream = null;
+        }
+    }
+
     // ======================== EVENT HANDLERS ========================
     
     $('startBtn').addEventListener('click', async () => {
         $('startBtn').disabled = true;
         $('startBtn').textContent = 'Starting...';
         
+        // Start session
+        await startSession();
+        
+        // Generate capture schedule
+        state.captureSchedule = generateCaptureSchedule();
+        
+        // Start camera
         if (!await startCamera()) {
             $('startBtn').disabled = false;
             $('startBtn').textContent = 'Start Verification';
@@ -1068,17 +1713,18 @@
         }
         
         // Reset state
-        state.goodFrameCount = 0;
-        state.lastFace = null;
-        state.capturedShots = [];
-        state.shotScores = [];
+        state.capturedFrames = [];
+        state.poseHistory = [];
+        state.landmarkHistory = [];
+        state.validFrameCount = 0;
+        state.lastFrameTime = performance.now();
         state.isRunning = true;
         
-        updateShotsUI();
         $('startBtn').textContent = 'Scanning...';
         updateStatus('🔍', 'Scanning', 'Position your face in the oval', 'detecting');
         
-        setTimeout(detectionLoop, 300);
+        // Start detection loop
+        setTimeout(detectionLoop, 100);
     });
     
     $('doneBtn').addEventListener('click', restart);
@@ -1088,7 +1734,7 @@
         stopCamera();
     });
 
-    // ======================== START ========================
+    // ======================== INIT ========================
     window.addEventListener('load', initialize);
     </script>
 </body>
