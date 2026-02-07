@@ -1,1580 +1,975 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="theme-color" content="#09090b">
-    <title>Identity Verification</title>
-    <style>
-        :root {
-            --bg: #09090b;
-            --surface: #18181b;
-            --surface-2: #27272a;
-            --border: #3f3f46;
-            --text: #fafafa;
-            --text-muted: #a1a1aa;
-            --success: #22c55e;
-            --warning: #f59e0b;
-            --error: #ef4444;
-            --primary: #3b82f6;
-        }
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Liveness Check</title>
+  <style>
+    :root {
+      --bg: #0a0e14;
+      --text: #f0f2f5;
+      --muted: #8b95a5;
+      --green: #22c55e;
+      --yellow: #eab308;
+      --red: #ef4444;
+      --blue: #3b82f6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { 
+      height: 100%; 
+      background: var(--bg); 
+      color: var(--text);
+      font: 14px/1.4 system-ui, -apple-system, sans-serif;
+    }
+    
+    .app {
+      min-height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    
+    .card {
+      width: min(420px, 100%);
+      border-radius: 20px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    
+    /* Camera Stage */
+    .stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 3/4;
+      background: #000;
+    }
+    
+    video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+    
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    
+    /* Status Pill */
+    .status-pill {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: rgba(0,0,0,0.6);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 100px;
+      backdrop-filter: blur(10px);
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .status-dot.ok { background: var(--green); }
+    .status-dot.warn { background: var(--yellow); }
+    .status-dot.bad { background: var(--red); }
+    .status-text {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    
+    /* Bottom HUD */
+    .hud {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding: 60px 16px 16px;
+      background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .hint {
+      text-align: center;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .hint-sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    
+    /* Progress dots */
+    .progress {
+      display: none;
+      gap: 8px;
+    }
+    .progress.show { display: flex; }
+    .progress .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.25);
+      transition: all 0.2s;
+    }
+    .progress .dot.done { background: var(--green); }
+    .progress .dot.active { background: var(--yellow); animation: pulse 0.8s infinite; }
+    @keyframes pulse { 50% { transform: scale(1.3); } }
+    
+    /* Button */
+    .btn {
+      appearance: none;
+      border: none;
+      padding: 14px 32px;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+      background: var(--blue);
+      color: white;
+    }
+    .btn:hover:not(:disabled) { filter: brightness(1.1); }
+    .btn:active:not(:disabled) { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn.secondary {
+      background: rgba(255,255,255,0.1);
+      color: var(--text);
+    }
+    
+    /* Result */
+    .result {
+      display: none;
+      padding: 20px;
+      text-align: center;
+    }
+    .result.show { display: block; }
+    .result img {
+      width: 120px;
+      height: 150px;
+      object-fit: cover;
+      border-radius: 14px;
+      border: 3px solid var(--green);
+      margin-bottom: 16px;
+    }
+    .result-title {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .result-title.fail { color: var(--red); }
+    .result-sub {
+      font-size: 14px;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+    
+    /* Loading overlay */
+    .loading {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .loading.show { display: flex; }
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text {
+      font-size: 14px;
+      color: var(--muted);
+    }
+    
+    /* Error */
+    .error {
+      display: none;
+      padding: 12px 16px;
+      margin: 12px 16px;
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 12px;
+      font-size: 13px;
+      color: #fca5a5;
+    }
+    .error.show { display: block; }
+  </style>
+</head>
 
-        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+<body>
+<div class="app">
+  <div class="card">
+    <!-- Camera Stage -->
+    <div class="stage" id="stage">
+      <video id="video" playsinline autoplay muted></video>
+      <canvas id="overlay"></canvas>
+      
+      <div class="status-pill">
+        <div class="status-dot" id="statusDot"></div>
+        <div class="status-text" id="statusText">Ready</div>
+      </div>
+      
+      <div class="hud">
+        <div class="progress" id="progress">
+          <div class="dot" id="p0"></div>
+          <div class="dot" id="p1"></div>
+          <div class="dot" id="p2"></div>
+          <div class="dot" id="p3"></div>
+          <div class="dot" id="p4"></div>
+        </div>
+        
+        <div>
+          <div class="hint" id="hint">Enable camera to start</div>
+          <div class="hint-sub" id="hintSub">Position your face in the oval</div>
+        </div>
+        
+        <button class="btn" id="btnMain">Enable Camera</button>
+      </div>
+      
+      <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loadingText">Loading...</div>
+      </div>
+    </div>
+    
+    <!-- Result -->
+    <div class="result" id="result">
+      <img id="resultImg" src="" alt="Captured">
+      <div class="result-title" id="resultTitle">Verified!</div>
+      <div class="result-sub" id="resultSub">Liveness confirmed</div>
+      <button class="btn secondary" id="btnRetry">Try Again</button>
+    </div>
+    
+    <div class="error" id="error"></div>
+  </div>
+</div>
 
-        html {
-            height: 100%;
-            height: -webkit-fill-available;
-        }
+<script type="module">
+/***********************************************************************
+ * CONFIG
+ ***********************************************************************/
+const CONFIG = {
+  // Set to your backend URL, or leave as "mock" for demo mode
+  API_BASE: new URLSearchParams(location.search).get("api") || "mock",
+  
+  // Capture settings
+  TARGET_FRAMES: 5,
+  CAPTURE_WINDOW_MS: 4000,
+  MIN_SPACING_MS: 280,
+  STABLE_FRAMES_REQUIRED: 8,
+  
+  // Quality
+  MIN_LUMA: 50,
+  MAX_LUMA: 210,
+  MIN_CONTRAST: 30,
+};
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-            min-height: -webkit-fill-available;
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            padding-top: env(safe-area-inset-top);
-            padding-bottom: env(safe-area-inset-bottom);
-            overflow-x: hidden;
-        }
+const IS_MOCK = CONFIG.API_BASE.toLowerCase() === "mock";
 
-        .app {
-            width: 100%;
-            max-width: 440px;
-            padding: 12px;
-            padding-bottom: calc(12px + env(safe-area-inset-bottom));
-        }
+/***********************************************************************
+ * DOM
+ ***********************************************************************/
+const $ = id => document.getElementById(id);
+const video = $("video");
+const overlay = $("overlay");
+const ctx = overlay.getContext("2d", { alpha: true });
 
-        /* Mobile-specific adjustments */
-        @media (max-width: 480px) {
-            .app {
-                padding: 8px;
-                padding-bottom: calc(8px + env(safe-area-inset-bottom));
-            }
-            
-            .header h1 { font-size: 18px; }
-            .header p { font-size: 12px; }
-            
-            .camera-container {
-                border-radius: 16px;
-                margin-bottom: 12px;
-            }
-            
-            .quality-panel {
-                padding: 10px;
-                border-radius: 12px;
-                margin-bottom: 12px;
-            }
-            
-            .quality-grid {
-                gap: 4px;
-            }
-            
-            .quality-item {
-                padding: 6px 2px;
-                font-size: 8px;
-            }
-            
-            .quality-icon {
-                font-size: 12px;
-            }
-            
-            .signals-row {
-                gap: 4px;
-                margin-top: 8px;
-                padding-top: 8px;
-            }
-            
-            .signal-item {
-                padding: 4px;
-            }
-            
-            .signal-label { font-size: 7px; }
-            .signal-value { font-size: 10px; }
-            
-            .btn {
-                padding: 12px;
-                font-size: 14px;
-                border-radius: 10px;
-            }
-            
-            .debug-panel {
-                font-size: 8px;
-                padding: 6px;
-                max-width: 100px;
-            }
-            
-            .status-text h2 { font-size: 14px; }
-            .status-text p { font-size: 11px; }
+/***********************************************************************
+ * STATE
+ ***********************************************************************/
+const state = {
+  phase: "init", // init | ready | scanning | capturing | verifying | done
+  faceLandmarker: null,
+  
+  // Detection
+  stableFrames: 0,
+  faceInOval: false,
+  
+  // Capture
+  captured: [],
+  captureStartMs: 0,
+  lastCaptureMs: 0,
+  sessionId: null,
+  nonce: null,
+};
+
+/***********************************************************************
+ * UI HELPERS
+ ***********************************************************************/
+function setStatus(text, type = "") {
+  $("statusText").textContent = text;
+  $("statusDot").className = "status-dot " + type;
 }
 
-        /* Small phones */
-        @media (max-width: 360px) {
-            .quality-grid {
-                grid-template-columns: repeat(4, 1fr);
-            }
-            
-            .quality-item {
-                padding: 4px 1px;
-            }
-            
-            .debug-panel {
-                display: none;
-            }
-        }
+function setHint(main, sub = "") {
+  $("hint").textContent = main;
+  $("hintSub").textContent = sub;
+}
 
-        /* Landscape mode - hide some elements */
-        @media (max-height: 500px) and (orientation: landscape) {
-            .header { display: none; }
-            .signals-row { display: none; }
-            .debug-panel { display: none; }
-            
-            .camera-container {
-                aspect-ratio: 4/3;
-                max-height: 70vh;
-            }
-        }
+function setLoading(on, text = "Loading...") {
+  $("loading").classList.toggle("show", on);
+  $("loadingText").textContent = text;
+}
 
-        .header {
-            text-align: center;
-            margin-bottom: 16px;
-        }
-        .header h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
-        .header p { font-size: 13px; color: var(--text-muted); }
+function setError(msg) {
+  $("error").textContent = msg;
+  $("error").classList.toggle("show", !!msg);
+}
 
-        /* Camera */
-        .camera-container {
-            position: relative;
-            width: 100%;
-            aspect-ratio: 3/4;
-            background: #000;
-            border-radius: 20px;
-            overflow: hidden;
-            margin-bottom: 16px;
-        }
+function setButton(text, enabled = true) {
+  $("btnMain").textContent = text;
+  $("btnMain").disabled = !enabled;
+}
 
-        #video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transform: scaleX(-1);
-        }
+function updateProgress() {
+  const show = state.phase === "capturing";
+  $("progress").classList.toggle("show", show);
+  
+  for (let i = 0; i < CONFIG.TARGET_FRAMES; i++) {
+    const dot = $(`p${i}`);
+    dot.className = "dot";
+    if (i < state.captured.length) dot.classList.add("done");
+    else if (i === state.captured.length && show) dot.classList.add("active");
+  }
+}
 
-        .overlay {
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-        }
+function showResult(success, imageData, message) {
+  $("stage").style.display = "none";
+  $("result").classList.add("show");
+  
+  $("resultImg").src = imageData || "";
+  $("resultImg").style.borderColor = success ? "var(--green)" : "var(--red)";
+  $("resultTitle").textContent = success ? "Verified!" : "Failed";
+  $("resultTitle").classList.toggle("fail", !success);
+  $("resultSub").textContent = message || (success ? "Liveness confirmed" : "Please try again");
+}
 
+function hideResult() {
+  $("stage").style.display = "block";
+  $("result").classList.remove("show");
+}
 
-        /* Regula-like oval UI */
-        .oval-ui{
-            position:absolute;
-            inset:0;
-            pointer-events:none;
-            transition: filter 0.2s ease;
-        }
-        .oval-svg{ width:100%; height:100%; display:block; }
-        .oval-dim{ fill: rgba(0,0,0,0.72); }
-        .oval-ring{
-            fill:none;
-            stroke: rgba(255,255,255,0.28);
-            stroke-width: 2.2;
-        }
-        .oval-glow{
-            fill:none;
-            stroke: rgba(255,255,255,0.10);
-            stroke-width: 10;
-            opacity: 0.0;
-            transition: opacity 0.2s ease;
-        }
-        .oval-ui.detecting .oval-ring{ stroke: rgba(245,158,11,0.95); }
-        .oval-ui.detecting .oval-glow{ opacity: 0.35; stroke: rgba(245,158,11,0.55); }
-        .oval-ui.valid .oval-ring{ stroke: rgba(34,197,94,0.95); }
-        .oval-ui.valid .oval-glow{ opacity: 0.35; stroke: rgba(34,197,94,0.55); }
-        .oval-ui.invalid .oval-ring{ stroke: rgba(239,68,68,0.95); }
-        .oval-ui.invalid .oval-glow{ opacity: 0.35; stroke: rgba(239,68,68,0.55); }
+/***********************************************************************
+ * OVAL DRAWING
+ ***********************************************************************/
+function resizeCanvas() {
+  const rect = overlay.getBoundingClientRect();
+  const dpr = Math.max(1, devicePixelRatio || 1);
+  overlay.width = rect.width * dpr;
+  overlay.height = rect.height * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
 
-        
-        /* Sweep ring */
-        .oval-sweep{
-            fill:none;
-            stroke: rgba(255,255,255,0.0);
-            stroke-width: 3.6;
-            stroke-linecap: round;
-            stroke-dasharray: 36 520; /* arc + gap (approx for ellipse) */
-            stroke-dashoffset: 0;
-            opacity: 0.0;
-        }
-        .oval-ui.capturing .oval-sweep{
-            opacity: 0.95;
-            stroke: rgba(255,255,255,0.85);
-            animation: ovalSweep 1.1s linear infinite;
-        }
-        .oval-ui.detecting .oval-sweep{
-            opacity: 0.55;
-            stroke: rgba(255,255,255,0.45);
-            animation: ovalSweep 1.4s linear infinite;
-        }
-        @keyframes ovalSweep{
-            from { stroke-dashoffset: 0; }
-            to { stroke-dashoffset: -556; }
-        }
+function getOval() {
+  const w = overlay.getBoundingClientRect().width;
+  const h = overlay.getBoundingClientRect().height;
+  return {
+    cx: w * 0.5,
+    cy: h * 0.46,
+    rx: w * 0.32,
+    ry: h * 0.38
+  };
+}
 
-        /* Direction arrows */
-        .oval-arrows{
-            position:absolute;
-            inset:0;
-            display:block;
-        }
-        .oval-arrows .arrow{
-            position:absolute;
-            width: 34px;
-            height: 34px;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            border-radius: 999px;
-            background: rgba(0,0,0,0.35);
-            color: rgba(255,255,255,0.92);
-            font-size: 16px;
-            opacity: 0.0;
-            transform: scale(0.95);
-            transition: opacity 0.12s ease, transform 0.12s ease;
-            user-select:none;
-            -webkit-user-select:none;
-        }
-        .oval-ui.show-up .oval-arrows .arrow-up,
-        .oval-ui.show-down .oval-arrows .arrow-down,
-        .oval-ui.show-left .oval-arrows .arrow-left,
-        .oval-ui.show-right .oval-arrows .arrow-right{
-            opacity: 0.95;
-            transform: scale(1.0);
-        }
-        .oval-arrows .arrow-up{ left: 50%; top: 14%; transform: translateX(-50%) scale(0.95); }
-        .oval-arrows .arrow-down{ left: 50%; bottom: 18%; transform: translateX(-50%) scale(0.95); }
-        .oval-arrows .arrow-left{ left: 10%; top: 52%; transform: translateY(-50%) scale(0.95); }
-        .oval-arrows .arrow-right{ right: 10%; top: 52%; transform: translateY(-50%) scale(0.95); }
+function pointInOval(x, y, oval) {
+  const dx = (x - oval.cx) / oval.rx;
+  const dy = (y - oval.cy) / oval.ry;
+  return dx * dx + dy * dy <= 1.0;
+}
 
-        /* Make SVG stable across browsers */
-        .oval-svg{
-            width:100%;
-            height:100%;
-        }
+function drawOval(isGood) {
+  const w = overlay.getBoundingClientRect().width;
+  const h = overlay.getBoundingClientRect().height;
+  const oval = getOval();
+  
+  ctx.clearRect(0, 0, w, h);
+  
+  // Dim outside
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.5)";
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.beginPath();
+  ctx.ellipse(oval.cx, oval.cy, oval.rx, oval.ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  
+  // Ring
+  ctx.save();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = isGood ? "rgba(34,197,94,0.9)" : "rgba(255,255,255,0.6)";
+  ctx.shadowColor = isGood ? "rgba(34,197,94,0.5)" : "transparent";
+  ctx.shadowBlur = isGood ? 15 : 0;
+  ctx.beginPath();
+  ctx.ellipse(oval.cx, oval.cy, oval.rx, oval.ry, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
 
-        /* Progress */
-        .progress-container {
-            position: absolute;
-            top: 12px;
-            left: 12px;
-            right: 12px;
-        }
-        .progress-bar {
-            height: 4px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 2px;
-            overflow: hidden;
-        }
-        .progress-fill {
-            height: 100%;
-            width: 0%;
-            background: var(--success);
-            transition: width 0.3s;
-        }
-
-        /* Frame indicators */
-        .frames-indicator {
-            position: absolute;
-            top: 24px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            gap: 8px;
-        }
-        .frame-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.2);
-            transition: all 0.2s;
-        }
-        .frame-dot.captured { background: var(--success); }
-        .frame-dot.current { background: var(--warning); animation: pulse 0.8s ease infinite; }
-        @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.3); } }
-
-        /* Status */
-        .status-bar {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            padding: 16px;
-            background: linear-gradient(transparent, rgba(0,0,0,0.85));
-        }
-        .status-row {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        .status-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.1);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-        }
-        .status-text h2 { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
-        .status-text p { font-size: 12px; color: var(--text-muted); }
-
-        /* Debug info */
-        .debug-panel {
-            position: absolute;
-            top: 12px;
-            right: 12px;
-            background: rgba(0,0,0,0.7);
-            padding: 8px;
-            border-radius: 8px;
-            font-size: 9px;
-            font-family: monospace;
-            color: var(--text-muted);
-            max-width: 120px;
-        }
-        .debug-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 2px;
-        }
-        .debug-value { color: var(--text); }
-        .debug-value.pass { color: var(--success); }
-        .debug-value.fail { color: var(--error); }
-
-        /* Loading overlay */
-        .loading-overlay {
-            position: absolute;
-            inset: 0;
-            background: rgba(0,0,0,0.85);
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 16px;
-            border-radius: 20px;
-        }
-        .loading-overlay.active { display: flex; }
-        .spinner {
-            width: 44px;
-            height: 44px;
-            border: 3px solid rgba(255,255,255,0.1);
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .loading-text { font-size: 14px; color: var(--text-muted); text-align: center; }
-
-        /* Quality panel */
-        .quality-panel {
-            background: var(--surface);
-            border-radius: 14px;
-            padding: 14px;
-            margin-bottom: 16px;
-        }
-        .quality-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-        .quality-title {
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .quality-mode {
-            font-size: 9px;
-            padding: 3px 8px;
-            background: rgba(34,197,94,0.15);
-            color: var(--success);
-            border-radius: 8px;
-        }
-        .quality-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 6px;
-        }
-        .quality-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-            padding: 8px 4px;
-            background: rgba(255,255,255,0.03);
-            border-radius: 8px;
-            font-size: 9px;
-            color: var(--text-muted);
-            text-align: center;
-        }
-        .quality-icon {
-            font-size: 14px;
-            transition: all 0.15s;
-        }
-        .quality-item.pass .quality-icon { color: var(--success); }
-        .quality-item.fail .quality-icon { color: var(--error); }
-
-        /* Soft signals */
-        .signals-row {
-            display: flex;
-            gap: 8px;
-            margin-top: 10px;
-            padding-top: 10px;
-            border-top: 1px solid var(--border);
-        }
-        .signal-item {
-            flex: 1;
-            padding: 6px;
-            background: rgba(255,255,255,0.02);
-            border-radius: 6px;
-            text-align: center;
-        }
-        .signal-label { font-size: 8px; color: var(--text-muted); margin-bottom: 2px; }
-        .signal-value { font-size: 11px; font-weight: 600; }
-
-        /* Button */
-        .btn {
-            width: 100%;
-            padding: 14px;
-            border: none;
-            border-radius: 12px;
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            font-family: inherit;
-            transition: all 0.2s;
-        }
-        .btn-primary { background: var(--primary); color: white; }
-        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        /* Result screen */
-        .result-screen {
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-            padding: 40px 20px;
-        }
-        .result-screen.active { display: flex; }
-        .result-icon {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 40px;
-            margin-bottom: 20px;
-        }
-        .result-icon.success { background: rgba(34,197,94,0.12); }
-        .result-icon.error { background: rgba(239,68,68,0.12); }
-        .result-title { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
-        .result-subtitle { font-size: 14px; color: var(--text-muted); margin-bottom: 24px; }
-        .result-photo {
-            width: 100px;
-            height: 130px;
-            object-fit: cover;
-            border-radius: 12px;
-            border: 3px solid var(--success);
-            margin-bottom: 24px;
-        }
-
-        .hidden { display: none !important; }
-        #canvas, #cropCanvas { display: none; }
-    </style>
-</head>
-<body>
-    <div class="app">
-        <!-- Main Flow -->
-        <div id="mainFlow">
-            <div class="header">
-                <h1>Identity Verification</h1>
-                <p>Position your face and hold naturally</p>
-            </div>
-
-            <div class="camera-container">
-                <video id="video" autoplay playsinline muted></video>
-                
-                <div class="overlay">
-                    <div class="oval-ui" id="faceOval" aria-hidden="true">
-                        <svg class="oval-svg" viewBox="0 0 300 400" preserveAspectRatio="xMidYMid meet">
-                            <defs>
-                                <mask id="ovalHole">
-                                    <rect x="0" y="0" width="300" height="400" fill="white"></rect>
-                                    <ellipse cx="150" cy="205" rx="86" ry="122" fill="black"></ellipse>
-                                </mask>
-                                <filter id="ovalGlow" x="-50%" y="-50%" width="200%" height="200%">
-                                    <feGaussianBlur stdDeviation="3.5" result="blur"></feGaussianBlur>
-                                    <feMerge>
-                                        <feMergeNode in="blur"></feMergeNode>
-                                        <feMergeNode in="SourceGraphic"></feMergeNode>
-                                    </feMerge>
-                                </filter>
-                            </defs>
-
-                            <rect class="oval-dim" x="0" y="0" width="300" height="400" mask="url(#ovalHole)"></rect>
-                            <ellipse class="oval-ring" cx="150" cy="205" rx="86" ry="122" vector-effect="non-scaling-stroke"></ellipse>
-                            <ellipse class="oval-sweep" cx="150" cy="205" rx="86" ry="122" vector-effect="non-scaling-stroke"></ellipse>
-                            <ellipse class="oval-glow" cx="150" cy="205" rx="86" ry="122" vector-effect="non-scaling-stroke" filter="url(#ovalGlow)"></ellipse>
-                        </svg>
-                    </div>
-
-                </div>
-
-                <div class="loading-overlay" id="loadingOverlay">
-                    <div class="spinner"></div>
-                    <div class="loading-text" id="loadingText">Initializing...</div>
-                </div>
-            </div>
-
-            <button class="btn btn-primary" id="startBtn" disabled>Loading MediaPipe...</button>
-        </div>
-
-        <!-- Result Screen -->
-        <div class="result-screen" id="resultScreen">
-            <div class="result-icon success" id="resultIcon">✓</div>
-            <h1 class="result-title" id="resultTitle">Verified!</h1>
-            <p class="result-subtitle" id="resultSubtitle">Identity confirmed</p>
-            <img class="result-photo" id="resultPhoto" src="" alt="">
-            <button class="btn btn-primary" id="doneBtn">Done</button>
-        </div>
-    </div>
-
-    <canvas id="canvas"></canvas>
-    <canvas id="cropCanvas" width="224" height="224"></canvas>
-
-    <script type="module">
-    /**
-     * PASSIVE FACE LIVENESS - CLIENT
-     * ===============================
-     * 
-     * MediaPipe Face Detector + Landmarker (WASM)
-     * Hard gates + Soft signals + Randomized capture
-     * 
-     * Outputs 5 frames with metadata to server for PAD scoring
-     */
-
-    import { FaceDetector, FaceLandmarker, FilesetResolver } from 
-        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/+esm';
-
-    // ======================== CONFIGURATION ========================
-    const CONFIG = {
-        API_URL: 'http://localhost:5000',
-        
-        // Hard Gates (adjusted per your spec)
-        FACE_CONFIDENCE: 0.85,
-        FACE_RATIO_MIN: 0.08,    // Minimum face size
-        FACE_RATIO_MAX: 0.55,    // Maximum face size
-        MAX_YAW: 25,
-        MAX_PITCH: 25,      // Relaxed - natural phone/laptop viewing angle
-        MAX_ROLL: 18,
-        LUMA_MIN: 50,
-        LUMA_MAX: 200,
-        LUMA_RANGE_MIN: 35,
-        SHARPNESS_MIN: 60,      // Laplacian variance
-        
-        // Capture settings
-        TOTAL_FRAMES: 5,
-        CAPTURE_WINDOW_MS: 3000,
-        MIN_FRAME_SPACING_MS: 250,
-        MIN_POSE_CHANGE_YAW: 3,
-        MIN_POSE_CHANGE_PITCH: 2,
-        FRAMES_WITH_POSE_CHANGE: 2,
-        
-        // Timing
-        DETECTION_INTERVAL_MS: 80,  // ~12 FPS
-        
-        // Anti-tamper
-        SESSION_TTL_MS: 30000,
-        
-        // Image output
-        CROP_SIZE: 224,
-        JPEG_QUALITY: 0.75,
-    };
-
-    // ======================== STATE ========================
-    const state = {
-        // MediaPipe
-        faceDetector: null,
-        faceLandmarker: null,
-        
-        // Camera
-        stream: null,
-        video: null,
-        
-        // Detection loop
-        isRunning: false,
-        loopId: null,
-        lastFrameTime: 0,
-        fps: 0,
-        
-        // Session
-        sessionId: null,
-        nonce: null,
-        sessionStart: 0,
-        
-        // Quality tracking
-        currentQuality: {},
-        poseHistory: [],
-        landmarkHistory: [],
-        
-        // Capture
-        capturedFrames: [],
-        captureSchedule: [],
-        lastCaptureTime: 0,
-        validFrameCount: 0,
-        
-        // Soft signals
-        jitterScore: 0,
-        entropyScore: 0,
-        uniformityScore: 0,
-    };
-
-    // ======================== DOM ========================
-    const $ = id => document.getElementById(id);
-    const video = $('video');
-    const canvas = $('canvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    const cropCanvas = $('cropCanvas');
-    const cropCtx = cropCanvas.getContext('2d');
-
-    // ======================== INITIALIZATION ========================
+/***********************************************************************
+ * MEDIAPIPE
+ ***********************************************************************/
+async function loadMediaPipe() {
+  setLoading(true, "Loading face detection...");
+  
+  try {
+    const mod = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs");
+    const vision = await mod.FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+    );
     
-    async function initialize() {
-        showLoading('Loading MediaPipe...');
-
-        // If you opened this page via file://, some browsers (esp. Safari) can stall ES module/WASM loads.
-        // Recommended: serve over HTTP, e.g. `python3 -m http.server 8000` then open `http://localhost:8000/`.
-        if (location.protocol === 'file:') {
-            $('loadingText').textContent = 'Tip: open via http:// (not file://) for reliable MediaPipe loading.';
-        }
-
-        const withTimeout = (p, ms, label) => Promise.race([
-            p,
-            new Promise((_, reject) => setTimeout(() => reject(new Error(label || `Timeout after ${ms}ms`)), ms))
-        ]);
-
-        try {
-            $('loadingText').textContent = 'Downloading MediaPipe assets...';
-
-            const vision = await withTimeout(
-                FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm'),
-                25000,
-                'MediaPipe WASM load timeout'
-            );
-
-            const createAll = async (delegate) => {
-                // Face Detector
-                state.faceDetector = await FaceDetector.createFromOptions(vision, {
-                    baseOptions: {
-                        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
-                        delegate
-                    },
-                    runningMode: 'VIDEO',
-                    minDetectionConfidence: 0.5
-                });
-
-                // Face Landmarker
-                state.faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
-                    baseOptions: {
-                        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
-                        delegate
-                    },
-                    runningMode: 'VIDEO',
-                    numFaces: 1,
-                    minFaceDetectionConfidence: 0.5,
-                    minTrackingConfidence: 0.5,
-                    outputFaceBlendshapes: false
-                });
-            };
-
-            // Try GPU first, fallback to CPU (Safari often fails GPU delegate)
-            try {
-                $('loadingText').textContent = 'Initializing (GPU)...';
-                await withTimeout(createAll('GPU'), 15000, 'GPU init timeout');
-                $('modeLabel').textContent = 'MediaPipe GPU';
-            } catch (gpuErr) {
-                console.warn('GPU delegate failed, falling back to CPU:', gpuErr);
-                $('loadingText').textContent = 'Initializing (CPU)...';
-                await withTimeout(createAll('CPU'), 20000, 'CPU init timeout');
-                $('modeLabel').textContent = 'MediaPipe CPU';
-            }
-
-            console.log('✓ MediaPipe loaded');
-            hideLoading();
-            setStartButton('Start Verification', true);
-
-        } catch (error) {
-            console.error('MediaPipe failed:', error);
-            $('loadingText').textContent = 'Failed to load MediaPipe. Check internet, or open via http:// (not file://), then refresh.';
-            // Keep button disabled to avoid broken flow; user can refresh.
-            setStartButton('Loading failed', false);
-        }
-    }
-
-    // ======================== SESSION MANAGEMENT ========================
+    state.faceLandmarker = await mod.FaceLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+        delegate: "GPU"
+      },
+      runningMode: "VIDEO",
+      numFaces: 1,
+      outputFaceBlendshapes: true
+    });
     
-    async function startSession() {
-        try {
-            const response = await fetch(`${CONFIG.API_URL}/session/start`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            
-            if (!response.ok) throw new Error('Session failed');
-            
-            const data = await response.json();
-            state.sessionId = data.session_id;
-            state.nonce = data.nonce;
-            state.sessionStart = Date.now();
-            
-            console.log('✓ Session started:', state.sessionId);
-            return true;
-            
-        } catch (error) {
-            console.error('Session error:', error);
-            // Continue without session for demo
-            state.sessionId = 'demo-' + Date.now();
-            state.nonce = Math.random().toString(36).substring(2);
-            state.sessionStart = Date.now();
-            return true;
-        }
+    return true;
+  } catch (e) {
+    console.error("MediaPipe error:", e);
+    setError("Failed to load face detection. Check your connection.");
+    return false;
+  } finally {
+    setLoading(false);
+  }
+}
+
+/***********************************************************************
+ * CAMERA
+ ***********************************************************************/
+async function startCamera() {
+  setLoading(true, "Starting camera...");
+  setError("");
+  
+  try {
+    // Check if getUserMedia is supported
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error("Camera not supported in this browser");
     }
     
-    function generateCaptureSchedule() {
-        // Randomized capture times within the window
-        const schedule = [];
-        const windowMs = CONFIG.CAPTURE_WINDOW_MS;
-        const numFrames = CONFIG.TOTAL_FRAMES;
-        const minSpacing = CONFIG.MIN_FRAME_SPACING_MS;
-        
-        // Divide window into segments with randomization
-        const segmentSize = windowMs / numFrames;
-        
-        for (let i = 0; i < numFrames; i++) {
-            const baseTime = i * segmentSize;
-            const jitter = Math.random() * (segmentSize - minSpacing);
-            schedule.push(Math.round(baseTime + jitter));
-        }
-        
-        // Ensure minimum spacing
-        for (let i = 1; i < schedule.length; i++) {
-            if (schedule[i] - schedule[i-1] < minSpacing) {
-                schedule[i] = schedule[i-1] + minSpacing;
-            }
-        }
-        
-        console.log('Capture schedule:', schedule);
-        return schedule;
-    }
-
-    // ======================== HARD GATES ========================
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    });
     
+    video.srcObject = stream;
     
-    // ======================== REALISM HELPERS ========================
-    // Smooth noisy signals so UI doesn't flicker (vendor trick)
-    const SMOOTH = {
-        bbox: 0.35,   // lower = smoother
-        pose: 0.30,
-        fit:  0.25,
-        msgHoldMs: 220
-    };
-
-    const smoothState = {
-        cx: null, cy: null, bw: null, bh: null,
-        yaw: 0, pitch: 0, roll: 0,
-        fit: 0,
-        lastMsg: "",
-        lastMsgCandidate: "",
-        lastMsgSince: 0
-    };
-
-    function ema(prev, next, alpha){
-        if (prev === null || prev === undefined) return next;
-        return prev + alpha * (next - prev);
-    }
-
-    // Oval in normalized [0..1] coords (matches SVG proportions)
-    const OVAL = {
-        cx: 0.5, cy: 0.5125, // center (approx 205/400)
-        rx: 0.2867, ry: 0.305, // 86/300, 122/400
-        margin: 0.04          // safety margin
-    };
-
-    function computeOvalFit(bbox, w, h){
-        const cx = (bbox.originX + bbox.width * 0.5) / w;
-        const cy = (bbox.originY + bbox.height * 0.5) / h;
-        const nx = (cx - OVAL.cx) / (OVAL.rx - OVAL.margin);
-        const ny = (cy - OVAL.cy) / (OVAL.ry - OVAL.margin);
-        const inside = (nx*nx + ny*ny) <= 1.0;
-
-        // Direction cues (based on center)
-        const dx = cx - OVAL.cx;
-        const dy = cy - OVAL.cy;
-
-        // Fit score: 1 = centered, 0 = far outside
-        const dist = Math.sqrt(nx*nx + ny*ny);
-        const fitScore = Math.max(0, Math.min(1, 1 - (dist - 0.35))); // forgiving near center
-
-        return { cx, cy, inside, dx, dy, fitScore };
-    }
-
-    function stableMessage(candidate){
-        const now = performance.now();
-        if (candidate !== smoothState.lastMsgCandidate){
-            smoothState.lastMsgCandidate = candidate;
-            smoothState.lastMsgSince = now;
-            return smoothState.lastMsg; // keep old until held
-        }
-        if ((now - smoothState.lastMsgSince) >= SMOOTH.msgHoldMs){
-            smoothState.lastMsg = candidate;
-        }
-        return smoothState.lastMsg;
-    }
-
-function checkHardGates(detection, landmarks, blendshapes, imageData) {
-        const gates = {
-            face: false,
-            size: false,
-            pose: false,            light: false,
-            sharp: false,
-            landmarks: false,
-            motion: false,
-            fit: false
-        };
-        
-        let message = 'Center your face in the oval';
-        const w = canvas.width;
-        const h = canvas.height;
-        
-        // 1. Face detected with confidence
-        if (!detection || detection.categories[0].score < CONFIG.FACE_CONFIDENCE) {
-            message = 'No face detected';
-            return { gates, allPass: false, message, pose: null };
-        }
-        gates.face = true;
-        
-        const bbox = detection.boundingBox;
-        
-        // Smooth bbox center/size
-        const rawCx = bbox.originX + bbox.width * 0.5;
-        const rawCy = bbox.originY + bbox.height * 0.5;
-        smoothState.cx = ema(smoothState.cx, rawCx, SMOOTH.bbox);
-        smoothState.cy = ema(smoothState.cy, rawCy, SMOOTH.bbox);
-        smoothState.bw = ema(smoothState.bw, bbox.width, SMOOTH.bbox);
-        smoothState.bh = ema(smoothState.bh, bbox.height, SMOOTH.bbox);
-
-        const smoothedBox = {
-            originX: smoothState.cx - smoothState.bw * 0.5,
-            originY: smoothState.cy - smoothState.bh * 0.5,
-            width: smoothState.bw,
-            height: smoothState.bh
-        };
-
-        // Regula/Incode feel: fixed oval target; guide user to align
-        const fit = computeOvalFit(smoothedBox, w, h);
-        smoothState.fit = ema(smoothState.fit, fit.fitScore, SMOOTH.fit);
-        
-        // 2. Face size ratio
-        const faceArea = smoothedBox.width * smoothedBox.height;
-        const frameArea = w * h;
-        const ratio = faceArea / frameArea;
-        
-        // 2b. Oval fit (direction guidance)
-        // If face is off-center, show arrows and block capture even if size/pose are ok.
-        if (!fit.inside) {
-            // Determine direction arrows (deadzone to prevent flicker)
-            const dead = 0.035;
-            const showLeft = fit.dx > dead;
-            const showRight = fit.dx < -dead;
-            const showUp = fit.dy > dead;
-            const showDown = fit.dy < -dead;
-
-            // We encode arrow classes via message later (updateStatus)
-            state._arrowClass = `${showUp ? ' show-up' : ''}${showDown ? ' show-down' : ''}${showLeft ? ' show-left' : ''}${showRight ? ' show-right' : ''}`;
-
-            message = 'Center your face';
-        } else {
-            gates.fit = true;
-            state._arrowClass = '';
-        }
-
-        if (ratio < CONFIG.FACE_RATIO_MIN) {
-            if (gates.fit)
-            message = 'Move closer';
-        } else if (ratio > CONFIG.FACE_RATIO_MAX) {
-            if (gates.fit)
-            message = 'Move back';
-        } else {
-            gates.size = true;
-        }
-        
-        // 3. Pose estimation (from landmarks)
-        const poseRaw = estimatePose(landmarks);
-        smoothState.yaw = ema(smoothState.yaw, poseRaw.yaw, SMOOTH.pose);
-        smoothState.pitch = ema(smoothState.pitch, poseRaw.pitch, SMOOTH.pose);
-        smoothState.roll = ema(smoothState.roll, poseRaw.roll, SMOOTH.pose);
-        const pose = { yaw: smoothState.yaw, pitch: smoothState.pitch, roll: smoothState.roll };
-        
-        // Pose must be frontal for reliable eye detection
-        if (gates.fit && Math.abs(pose.yaw) > CONFIG.MAX_YAW) {
-            message = pose.yaw > 0 ? 'Turn head left' : 'Turn head right';
-        } else if (gates.fit && Math.abs(pose.pitch) > CONFIG.MAX_PITCH) {
-            message = pose.pitch > 0 ? 'Look up at camera' : 'Raise your head';
-        } else if (gates.fit && Math.abs(pose.roll) > CONFIG.MAX_ROLL) {
-            message = 'Straighten head';
-        } else {
-            gates.pose = true;
-        }
-        // 4. Lighting check
-        const lighting = analyzeLighting(imageData);
-        if (lighting.mean < CONFIG.LUMA_MIN) {
-            if (gates.fit) message = 'Too dark - more light needed';
-        } else if (lighting.mean > CONFIG.LUMA_MAX) {
-            if (gates.fit) message = 'Too bright';
-        } else if (lighting.range < CONFIG.LUMA_RANGE_MIN) {
-            if (gates.fit) message = 'Low contrast';
-        } else {
-            gates.light = true;
-        }
-
-// 6. Sharpness
-        const sharpness = calculateSharpness(imageData);
-        if (sharpness < CONFIG.SHARPNESS_MIN) {
-            if (gates.fit) message = 'Image blurry - hold still';
-        } else {
-            gates.sharp = true;
-        }
-
-// 7. Key landmarks visible
-        const landmarksVisible = checkLandmarksVisible(landmarks);
-        if (!landmarksVisible) {
-            if (gates.fit) message = 'Face partially hidden';
-        } else {
-            gates.landmarks = true;
-        }
-
-// 8. Motion check (natural movement)
-        const hasMotion = checkNaturalMotion(pose);
-        gates.motion = hasMotion || state.capturedFrames.length === 0;
-        
-        const allPass = Object.values(gates).every(v => v);
-        if (allPass) message = 'Perfect - capturing...';
-        
-        return { gates, allPass, message, pose, lighting, sharpness };
-    }
-
-    // ======================== POSE ESTIMATION ========================
+    // Wait for video to be ready
+    await new Promise((resolve, reject) => {
+      video.onloadedmetadata = () => {
+        console.log("Video metadata loaded:", video.videoWidth, "x", video.videoHeight);
+        resolve();
+      };
+      video.onerror = (e) => reject(new Error("Video element error"));
+      setTimeout(() => reject(new Error("Video load timeout")), 10000);
+    });
     
-    function estimatePose(landmarks) {
-        if (!landmarks || landmarks.length < 468) {
-            return { yaw: 0, pitch: 0, roll: 0 };
-        }
-        
-        // Key landmark indices
-        const noseTip = landmarks[4];
-        const leftEyeOuter = landmarks[33];
-        const rightEyeOuter = landmarks[263];
-        const leftMouth = landmarks[61];
-        const rightMouth = landmarks[291];
-        const chin = landmarks[152];
-        const forehead = landmarks[10];
-        
-        // Eye distance for normalization
-        const eyeDist = Math.sqrt(
-            Math.pow(rightEyeOuter.x - leftEyeOuter.x, 2) +
-            Math.pow(rightEyeOuter.y - leftEyeOuter.y, 2)
-        );
-        
-        // Yaw: nose offset from eye midpoint
-        const eyeMidX = (leftEyeOuter.x + rightEyeOuter.x) / 2;
-        const noseOffsetX = (noseTip.x - eyeMidX) / eyeDist;
-        const yaw = Math.atan(noseOffsetX * 2) * (180 / Math.PI) * 1.5;
-        
-        // Pitch: vertical nose position relative to eyes
-        const eyeMidY = (leftEyeOuter.y + rightEyeOuter.y) / 2;
-        const noseOffsetY = (noseTip.y - eyeMidY) / eyeDist;
-        const pitch = Math.atan(noseOffsetY) * (180 / Math.PI) * 0.8;  // Reduced multiplier
-        
-        // Roll: eye line angle
-        const roll = Math.atan2(
-            rightEyeOuter.y - leftEyeOuter.y,
-            rightEyeOuter.x - leftEyeOuter.x
-        ) * (180 / Math.PI);
-        
-        return { yaw, pitch, roll };
-    }
-
-    // ======================== IMAGE ANALYSIS ========================
-    
-    function analyzeLighting(imageData) {
-        const data = imageData.data;
-        let sum = 0;
-        let min = 255;
-        let max = 0;
-        const samples = Math.floor(data.length / 16); // Sample every 4th pixel
-        
-        for (let i = 0; i < data.length; i += 16) {
-            const luma = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
-            sum += luma;
-            if (luma < min) min = luma;
-            if (luma > max) max = luma;
-        }
-        
-        return {
-            mean: sum / samples,
-            range: max - min,
-            min,
-            max
-        };
+    // Play video
+    try {
+      await video.play();
+      console.log("Video playing");
+    } catch (playErr) {
+      console.warn("Autoplay blocked, trying muted:", playErr);
+      video.muted = true;
+      await video.play();
     }
     
-    function calculateSharpness(imageData) {
-        // Laplacian variance
-        const w = canvas.width;
-        const h = canvas.height;
-        const data = imageData.data;
-        
-        let sum = 0;
-        let sumSq = 0;
-        let count = 0;
-        
-        // Sample center region
-        const startX = Math.floor(w * 0.25);
-        const endX = Math.floor(w * 0.75);
-        const startY = Math.floor(h * 0.25);
-        const endY = Math.floor(h * 0.75);
-        
-        for (let y = startY + 1; y < endY - 1; y += 2) {
-            for (let x = startX + 1; x < endX - 1; x += 2) {
-                const idx = (y * w + x) * 4;
-                const idxUp = ((y-1) * w + x) * 4;
-                const idxDown = ((y+1) * w + x) * 4;
-                const idxLeft = (y * w + (x-1)) * 4;
-                const idxRight = (y * w + (x+1)) * 4;
-                
-                // Grayscale Laplacian
-                const center = (data[idx] + data[idx+1] + data[idx+2]) / 3;
-                const up = (data[idxUp] + data[idxUp+1] + data[idxUp+2]) / 3;
-                const down = (data[idxDown] + data[idxDown+1] + data[idxDown+2]) / 3;
-                const left = (data[idxLeft] + data[idxLeft+1] + data[idxLeft+2]) / 3;
-                const right = (data[idxRight] + data[idxRight+1] + data[idxRight+2]) / 3;
-                
-                const laplacian = Math.abs(4 * center - up - down - left - right);
-                sum += laplacian;
-                sumSq += laplacian * laplacian;
-                count++;
-            }
-        }
-        
-        const mean = sum / count;
-        const variance = (sumSq / count) - (mean * mean);
-        
-        return variance;
+    // Verify video is actually playing
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      throw new Error("Camera started but no video data");
     }
     
-    function checkLandmarksVisible(landmarks) {
-        if (!landmarks || landmarks.length < 468) return false;
-        
-        // Check key landmarks have reasonable confidence
-        const keyIndices = [
-            4,    // nose tip
-            33,   // left eye outer
-            263,  // right eye outer
-            61,   // left mouth
-            291,  // right mouth
-            152,  // chin
-            10    // forehead
-        ];
-        
-        for (const idx of keyIndices) {
-            const lm = landmarks[idx];
-            if (!lm || lm.x < 0.05 || lm.x > 0.95 || lm.y < 0.05 || lm.y > 0.95) {
-                return false;
-            }
-        }
-        
+    console.log("Camera OK:", video.videoWidth, "x", video.videoHeight);
+    return true;
+    
+  } catch (e) {
+    console.error("Camera error:", e);
+    
+    // Better error messages
+    let msg = "Camera error: " + e.message;
+    if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError") {
+      msg = "Camera permission denied. Please allow camera access in your browser settings.";
+    } else if (e.name === "NotFoundError" || e.name === "DevicesNotFoundError") {
+      msg = "No camera found. Please connect a camera.";
+    } else if (e.name === "NotReadableError" || e.name === "TrackStartError") {
+      msg = "Camera is in use by another app. Close other apps using the camera.";
+    } else if (e.name === "OverconstrainedError") {
+      msg = "Camera constraints not supported. Trying default settings...";
+      // Try again with minimal constraints
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        video.srcObject = stream;
+        await new Promise(r => video.onloadedmetadata = r);
+        await video.play();
+        setLoading(false);
         return true;
+      } catch (e2) {
+        msg = "Camera failed even with default settings: " + e2.message;
+      }
     }
+    
+    setError(msg);
+    return false;
+  } finally {
+    setLoading(false);
+  }
+}
 
-    // ======================== MOTION ANALYSIS ========================
-    
-    function checkNaturalMotion(currentPose) {
-        if (state.poseHistory.length < 3) {
-            state.poseHistory.push(currentPose);
-            return true;
-        }
-        
-        state.poseHistory.push(currentPose);
-        if (state.poseHistory.length > 30) {
-            state.poseHistory.shift();
-        }
-        
-        // Check for sufficient pose variation
-        let poseChangeCount = 0;
-        
-        for (let i = 1; i < state.poseHistory.length; i++) {
-            const prev = state.poseHistory[i-1];
-            const curr = state.poseHistory[i];
-            
-            const yawChange = Math.abs(curr.yaw - prev.yaw);
-            const pitchChange = Math.abs(curr.pitch - prev.pitch);
-            
-            if (yawChange >= CONFIG.MIN_POSE_CHANGE_YAW || 
-                pitchChange >= CONFIG.MIN_POSE_CHANGE_PITCH) {
-                poseChangeCount++;
-            }
-        }
-        
-        return poseChangeCount >= CONFIG.FRAMES_WITH_POSE_CHANGE;
-    }
-    
-    function calculateJitter(landmarks) {
-        if (!landmarks || state.landmarkHistory.length < 5) {
-            if (landmarks) {
-                state.landmarkHistory.push(landmarks.slice(0, 10)); // Store first 10 landmarks
-            }
-            return 0.5;
-        }
-        
-        state.landmarkHistory.push(landmarks.slice(0, 10));
-        if (state.landmarkHistory.length > 15) {
-            state.landmarkHistory.shift();
-        }
-        
-        // Calculate average movement
-        let totalMovement = 0;
-        for (let i = 1; i < state.landmarkHistory.length; i++) {
-            for (let j = 0; j < 10; j++) {
-                const prev = state.landmarkHistory[i-1][j];
-                const curr = state.landmarkHistory[i][j];
-                totalMovement += Math.sqrt(
-                    Math.pow(curr.x - prev.x, 2) + Math.pow(curr.y - prev.y, 2)
-                );
-            }
-        }
-        
-        const avgMovement = totalMovement / (state.landmarkHistory.length * 10);
-        
-        // Too static is suspicious (video replay), too jittery is bad quality
-        if (avgMovement < 0.001) return 0.2;  // Suspiciously static
-        if (avgMovement > 0.05) return 0.3;   // Too jittery
-        return 0.8;  // Good natural movement
-    }
-    
-    function calculateTextureEntropy(imageData) {
-        // Simple entropy estimation
-        const histogram = new Array(256).fill(0);
-        const data = imageData.data;
-        
-        for (let i = 0; i < data.length; i += 4) {
-            const gray = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
-            histogram[gray]++;
-        }
-        
-        const totalPixels = data.length / 4;
-        let entropy = 0;
-        
-        for (let i = 0; i < 256; i++) {
-            if (histogram[i] > 0) {
-                const p = histogram[i] / totalPixels;
-                entropy -= p * Math.log2(p);
-            }
-        }
-        
-        return Math.min(1, entropy / 8); // Normalize to 0-1
-    }
+function stopCamera() {
+  const stream = video.srcObject;
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
+  }
+}
 
-    // ======================== FRAME CAPTURE ========================
-    
-    function shouldCaptureNow() {
-        if (state.capturedFrames.length >= CONFIG.TOTAL_FRAMES) return false;
-        
-        const elapsed = Date.now() - state.sessionStart;
-        const nextCaptureTime = state.captureSchedule[state.capturedFrames.length];
-        
-        if (elapsed >= nextCaptureTime) {
-            const timeSinceLast = Date.now() - state.lastCaptureTime;
-            return timeSinceLast >= CONFIG.MIN_FRAME_SPACING_MS;
-        }
-        
-        return false;
-    }
-    
-    function captureFrame(bbox, quality) {
-        // Crop face region
-        const padding = 0.3;
-        const x = Math.max(0, bbox.originX - bbox.width * padding);
-        const y = Math.max(0, bbox.originY - bbox.height * padding);
-        const w = Math.min(canvas.width - x, bbox.width * (1 + padding * 2));
-        const h = Math.min(canvas.height - y, bbox.height * (1 + padding * 2));
-        
-        // Draw cropped and resized to 224x224
-        cropCtx.drawImage(
-            canvas, 
-            x, y, w, h,
-            0, 0, CONFIG.CROP_SIZE, CONFIG.CROP_SIZE
-        );
-        
-        const imageData = cropCanvas.toDataURL('image/jpeg', CONFIG.JPEG_QUALITY);
-        
-        // Generate hash for anti-tamper
-        const frameId = state.capturedFrames.length;
-        const hashInput = `${imageData.slice(-100)}|${state.nonce}|${frameId}`;
-        const hash = simpleHash(hashInput);
-        
-        const frame = {
-            image: imageData,
-            frame_id: frameId,
-            timestamp: Date.now() - state.sessionStart,
-            hash: hash,
-            metadata: {
-                pose: quality.pose,
-lighting: quality.lighting,
-                sharpness: quality.sharpness,
-                jitter: state.jitterScore,
-                entropy: state.entropyScore
-            }
-        };
-        
-        state.capturedFrames.push(frame);
-        state.lastCaptureTime = Date.now();
-        
-        console.log(`✓ Captured frame ${frameId + 1}/${CONFIG.TOTAL_FRAMES}`);
-        
-        return frame;
-    }
-    
-    function simpleHash(str) {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash;
-        }
-        return hash.toString(16);
-    }
+/***********************************************************************
+ * SERVER API
+ ***********************************************************************/
+async function apiStartSession() {
+  if (IS_MOCK) {
+    state.sessionId = "mock-" + Date.now();
+    state.nonce = Math.random().toString(36).slice(2);
+    return true;
+  }
+  
+  try {
+    const r = await fetch(`${CONFIG.API_BASE}/session/start`, { method: "POST" });
+    if (!r.ok) throw new Error("Server error");
+    const data = await r.json();
+    state.sessionId = data.session_id;
+    state.nonce = data.nonce;
+    return true;
+  } catch (e) {
+    console.error("Session error:", e);
+    return false;
+  }
+}
 
-    // ======================== UI (MINIMAL) ========================
-    // User request: remove all visible quality gates, debug and signals.
-    // Keep only: oval overlay + Start button + loading overlay + result screen.
-
-    function setOvalState(stateName) {
-        // stateName: 'idle' | 'detecting' | 'capturing' | 'success' | 'error'
-        const el = $('faceOval');
-        if (!el) return;
-        el.className = `oval-ui ${stateName || ''}`;
-    }
-
-    function setStartButton(text, enabled) {
-        const btn = $('startBtn');
-        if (!btn) return;
-        if (typeof text === 'string') btn.textContent = text;
-        if (typeof enabled === 'boolean') btn.disabled = !enabled;
-    }
-
-    function showLoading(text) {
-        const ov = $('loadingOverlay');
-        if (ov) ov.classList.add('active');
-        const lt = $('loadingText');
-        if (lt && text) lt.textContent = text;
-        setOvalState('capturing'); // keep sweep alive while verifying
-    }
-
-    function hideLoading() {
-        const ov = $('loadingOverlay');
-        if (ov) ov.classList.remove('active');
-    }
-
-    // ======================== MAIN DETECTION LOOP ========================
-    
-    async function detectionLoop() {
-        if (!state.isRunning) return;
-        
-        const now = performance.now();
-        state.fps = 1000 / (now - state.lastFrameTime);
-        state.lastFrameTime = now;
-        
-        // Draw frame to canvas
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0);
-        
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        
-        // Run detection
-        const timestamp = performance.now();
-        const detections = state.faceDetector.detectForVideo(canvas, timestamp);
-        const landmarksResult = state.faceLandmarker.detectForVideo(canvas, timestamp);
-        
-        const detection = detections.detections[0];
-        const landmarks = landmarksResult.faceLandmarks[0];
-        const blendshapes = landmarksResult.faceBlendshapes;
-        
-        // Check hard gates
-        const quality = checkHardGates(detection, landmarks, blendshapes, imageData);
-        
-        // Update soft signals
-        state.jitterScore = calculateJitter(landmarks);
-        state.entropyScore = calculateTextureEntropy(imageData);
-        state.uniformityScore = quality.lighting ? 
-            Math.min(1, quality.lighting.range / 100) : 0.5;
-        
-        // Update UI
-        if (quality.allPass) {
-            state.validFrameCount++;
-            
-            // Check if should capture
-            if (shouldCaptureNow()) {
-                captureFrame(detection.boundingBox, quality);
-                if (state.capturedFrames.length >= CONFIG.TOTAL_FRAMES) {
-                    await submitToServer();
-                    return;
-                }
-            }
-            
-            updateStatus('✓', 'Hold still',
-                `Capturing ${state.capturedFrames.length + 1}/${CONFIG.TOTAL_FRAMES}...`, 'valid capturing');
-        } else {
-            const msg = stableMessage(quality.message);
-            updateStatus('⚠️', msg,
-                `${state.capturedFrames.length}/${CONFIG.TOTAL_FRAMES} captured`,
-                quality.gates.face ? 'detecting' : 'invalid');
-        }
-        
-        // Continue loop
-        state.loopId = setTimeout(detectionLoop, CONFIG.DETECTION_INTERVAL_MS);
-    }
-    
-    function stopLoop() {
-        state.isRunning = false;
-        if (state.loopId) {
-            clearTimeout(state.loopId);
-            state.loopId = null;
-        }
-    }
-
-    // ======================== SERVER SUBMISSION ========================
-    
-    async function submitToServer() {
-        stopLoop();
-        showLoading('Verifying liveness...');
-        
-        try {
-            const payload = {
-                session_id: state.sessionId,
-                nonce: state.nonce,
-                frames: state.capturedFrames,
-                client_metadata: {
-                    user_agent: navigator.userAgent,
-                    screen: `${screen.width}x${screen.height}`,
-                    capture_duration_ms: Date.now() - state.sessionStart
-                }
-            };
-            
-            const response = await fetch(`${CONFIG.API_URL}/verify`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            
-            if (!response.ok) throw new Error(`Server error: ${response.status}`);
-            
-            const result = await response.json();
-            
-            hideLoading();
-            showResult(result);
-            
-        } catch (error) {
-            console.error('Submission error:', error);
-            hideLoading();
-            
-            // Show error result
-            showResult({
-                decision: 'ERROR',
-                message: 'Connection error. Please try again.'
-            });
-        }
-    }
-
-    // ======================== RESULT ========================
-    
-    function showResult(result) {
-        stopCamera();
-        
-        $('mainFlow').classList.add('hidden');
-        $('resultScreen').classList.add('active');
-        
-        const isPass = result.decision === 'PASS';
-        
-        $('resultIcon').className = `result-icon ${isPass ? 'success' : 'error'}`;
-        $('resultIcon').textContent = isPass ? '✓' : '✗';
-        $('resultTitle').textContent = isPass ? 'Verified!' : 'Verification Failed';
-        $('resultSubtitle').textContent = result.message || 
-            (isPass ? 'Identity confirmed' : 'Please try again');
-        
-        if (isPass && state.capturedFrames.length > 0) {
-            // Show best frame if server provided it, otherwise the last captured frame.
-            let best = null;
-            if (result && result.best_frame_id !== undefined && result.best_frame_id !== null) {
-                best = state.capturedFrames.find(f => f.frame_id === result.best_frame_id) || null;
-            }
-            if (!best) best = state.capturedFrames[state.capturedFrames.length - 1];
-
-            $('resultPhoto').src = best.image;
-            $('resultPhoto').style.display = 'block';
-        } else {
-            $('resultPhoto').style.display = 'none';
-        }
-    }
-    
-    function restart() {
-        $('resultScreen').classList.remove('active');
-        $('mainFlow').classList.remove('hidden');
-        
-        // Reset state
-        state.capturedFrames = [];
-        state.poseHistory = [];
-        state.landmarkHistory = [];
-        state.validFrameCount = 0;
-        
-        // Reset UI (minimal)
-        hideLoading();
-        setOvalState('idle');
-        setStartButton('Start Verification', true);
-    }
-
-    // ======================== CAMERA ========================
-    
-    async function startCamera() {
-        try {
-            // Detect if mobile
-            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-            
-            // Mobile-optimized constraints
-            const constraints = {
-                video: {
-                    facingMode: 'user',
-                    width: { ideal: isMobile ? 480 : 640 },
-                    height: { ideal: isMobile ? 640 : 480 },
-                    frameRate: { ideal: 15, max: 30 }
-                },
-                audio: false
-            };
-            
-            // Try to get camera with ideal constraints
-            try {
-                state.stream = await navigator.mediaDevices.getUserMedia(constraints);
-            } catch (e) {
-                // Fallback to basic constraints
-                console.warn('Ideal constraints failed, trying fallback:', e);
-                state.stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'user' },
-                    audio: false
-                });
-            }
-            
-            video.srcObject = state.stream;
-            
-            // Wait for video to be ready
-            await new Promise((resolve, reject) => {
-                video.onloadedmetadata = () => {
-                    video.play()
-                        .then(resolve)
-                        .catch(reject);
-                };
-                video.onerror = reject;
-                setTimeout(() => reject(new Error('Video load timeout')), 10000);
-            });
-            
-            console.log(`Camera started: ${video.videoWidth}x${video.videoHeight}`);
-            return true;
-            
-        } catch (error) {
-            console.error('Camera error:', error);
-            
-            // User-friendly error messages
-            let message = 'Cannot access camera.';
-            if (error.name === 'NotAllowedError') {
-                message = 'Camera permission denied. Please allow camera access and try again.';
-            } else if (error.name === 'NotFoundError') {
-                message = 'No camera found. Please ensure your device has a front camera.';
-            } else if (error.name === 'NotReadableError') {
-                message = 'Camera is in use by another app. Please close other apps and try again.';
-            }
-            
-            alert(message);
-            return false;
-        }
-    }
-    
-    function stopCamera() {
-        if (state.stream) {
-            state.stream.getTracks().forEach(t => t.stop());
-            state.stream = null;
-        }
-    }
-
-    // ======================== EVENT HANDLERS ========================
-    
-    $('startBtn').addEventListener('click', async () => {
-        $('startBtn').disabled = true;
-        $('startBtn').textContent = 'Starting...';
-        
-        // Start session
-        await startSession();
-        
-        // Generate capture schedule
-        state.captureSchedule = generateCaptureSchedule();
-        
-        // Start camera
-        if (!await startCamera()) {
-            $('startBtn').disabled = false;
-            $('startBtn').textContent = 'Start Verification';
-            return;
-        }
-        
-        // Reset state
-        state.capturedFrames = [];
-        state.poseHistory = [];
-        state.landmarkHistory = [];
-        state.validFrameCount = 0;
-        state.lastFrameTime = performance.now();
-        state.isRunning = true;
-        
-        $('startBtn').textContent = 'Scanning...';
-        updateStatus('🔍', 'Scanning', 'Position your face in the oval', 'detecting');
-        
-        // Start detection loop
-        setTimeout(detectionLoop, 100);
+async function apiVerify(frames) {
+  if (IS_MOCK) {
+    await new Promise(r => setTimeout(r, 600));
+    return {
+      decision: "PASS",
+      confidence: 0.94,
+      spoof_score: 0.06,
+      best_frame_id: frames.length - 1
+    };
+  }
+  
+  try {
+    const r = await fetch(`${CONFIG.API_BASE}/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: state.sessionId,
+        nonce: state.nonce,
+        frames,
+        client_metadata: { user_agent: navigator.userAgent }
+      })
     });
-    
-    $('doneBtn').addEventListener('click', restart);
-    
-    window.addEventListener('beforeunload', () => {
-        stopLoop();
-        stopCamera();
-    });
+    if (!r.ok) throw new Error("Verification failed");
+    return await r.json();
+  } catch (e) {
+    console.error("Verify error:", e);
+    return null;
+  }
+}
 
-    // ======================== INIT ========================
-    window.addEventListener('load', initialize);
-    </script>
+/***********************************************************************
+ * QUALITY CHECK
+ ***********************************************************************/
+function checkQuality(x, y, w, h) {
+  const tmp = document.createElement("canvas");
+  tmp.width = 64;
+  tmp.height = 64;
+  const tctx = tmp.getContext("2d");
+  tctx.drawImage(video, x, y, w, h, 0, 0, 64, 64);
+  
+  const img = tctx.getImageData(0, 0, 64, 64);
+  const d = img.data;
+  
+  let sum = 0, min = 255, max = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    const luma = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+    sum += luma;
+    if (luma < min) min = luma;
+    if (luma > max) max = luma;
+  }
+  
+  const mean = sum / (d.length / 4);
+  const contrast = max - min;
+  
+  return mean >= CONFIG.MIN_LUMA && mean <= CONFIG.MAX_LUMA && contrast >= CONFIG.MIN_CONTRAST;
+}
+
+function checkEyesOpen(blendshapes) {
+  if (!blendshapes?.length) return true;
+  const shapes = blendshapes[0].categories;
+  const left = shapes.find(s => s.categoryName === "eyeBlinkLeft");
+  const right = shapes.find(s => s.categoryName === "eyeBlinkRight");
+  if (!left || !right) return true;
+  return left.score < 0.5 && right.score < 0.5;
+}
+
+/***********************************************************************
+ * CAPTURE FRAME
+ ***********************************************************************/
+function captureFrame(box) {
+  const size = 224;
+  const tmp = document.createElement("canvas");
+  tmp.width = size;
+  tmp.height = size;
+  const tctx = tmp.getContext("2d");
+  
+  // Mirror
+  tctx.translate(size, 0);
+  tctx.scale(-1, 1);
+  tctx.drawImage(video, box.x, box.y, box.w, box.h, 0, 0, size, size);
+  
+  return tmp.toDataURL("image/jpeg", 0.75);
+}
+
+/***********************************************************************
+ * MAIN LOOP
+ ***********************************************************************/
+function loop() {
+  if (state.phase !== "scanning" && state.phase !== "capturing") return;
+  
+  const now = performance.now();
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  
+  resizeCanvas();
+  
+  // Detect face
+  const result = state.faceLandmarker.detectForVideo(video, now);
+  const faces = result?.faceLandmarks;
+  
+  let faceBox = null;
+  let faceInOval = false;
+  let faceTooSmall = false;
+  let faceTooBig = false;
+  let faceOffCenter = false;
+  
+  const displayW = overlay.getBoundingClientRect().width;
+  const displayH = overlay.getBoundingClientRect().height;
+  const oval = getOval();
+  
+  if (faces?.length) {
+    const lm = faces[0];
+    let minX = 1, maxX = 0, minY = 1, maxY = 0;
+    for (const p of lm) {
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    }
+    
+    // Face bounds in display coordinates (mirrored)
+    const faceLeft = (1 - maxX) * displayW;
+    const faceRight = (1 - minX) * displayW;
+    const faceTop = minY * displayH;
+    const faceBottom = maxY * displayH;
+    const faceCenterX = (faceLeft + faceRight) / 2;
+    const faceCenterY = (faceTop + faceBottom) / 2;
+    const faceW = faceRight - faceLeft;
+    const faceH = faceBottom - faceTop;
+    
+    // Check face size relative to oval
+    const ovalW = oval.rx * 2;
+    const ovalH = oval.ry * 2;
+    const sizeRatioW = faceW / ovalW;
+    const sizeRatioH = faceH / ovalH;
+    
+    faceTooSmall = sizeRatioW < 0.5 || sizeRatioH < 0.5;
+    faceTooBig = sizeRatioW > 1.1 || sizeRatioH > 1.1;
+    
+    // Check if center is in oval
+    const centerInOval = pointInOval(faceCenterX, faceCenterY, oval);
+    
+    // Check if face corners fit in oval (with some tolerance)
+    const margin = 0.15; // 15% margin
+    const checkPoints = [
+      { x: faceLeft + faceW * margin, y: faceTop + faceH * margin },      // top-left
+      { x: faceRight - faceW * margin, y: faceTop + faceH * margin },     // top-right
+      { x: faceLeft + faceW * margin, y: faceBottom - faceH * margin },   // bottom-left
+      { x: faceRight - faceW * margin, y: faceBottom - faceH * margin },  // bottom-right
+      { x: faceCenterX, y: faceTop + faceH * 0.1 },                       // top-center
+      { x: faceCenterX, y: faceBottom - faceH * 0.1 }                     // bottom-center (chin)
+    ];
+    
+    const allPointsInOval = checkPoints.every(p => pointInOval(p.x, p.y, oval));
+    
+    // Calculate how off-center the face is
+    const offsetX = Math.abs(faceCenterX - oval.cx) / oval.rx;
+    const offsetY = Math.abs(faceCenterY - oval.cy) / oval.ry;
+    faceOffCenter = offsetX > 0.3 || offsetY > 0.3;
+    
+    // Face is properly in oval if:
+    // - Center is in oval
+    // - All check points are in oval
+    // - Not too small or too big
+    // - Not too off-center
+    faceInOval = centerInOval && allPointsInOval && !faceTooSmall && !faceTooBig && !faceOffCenter;
+    
+    faceBox = {
+      x: minX * vw,
+      y: minY * vh,
+      w: (maxX - minX) * vw,
+      h: (maxY - minY) * vh
+    };
+    
+    // Debug logging
+    // console.log(`Face: center=${centerInOval}, points=${allPointsInOval}, small=${faceTooSmall}, big=${faceTooBig}, offset=${faceOffCenter}`);
+  }
+  
+  // Update stability - only count frames where face is properly positioned
+  if (faceInOval) {
+    state.stableFrames = Math.min(state.stableFrames + 1, 1000);
+  } else {
+    state.stableFrames = Math.max(state.stableFrames - 3, 0); // Faster reset when position is wrong
+  }
+  
+  const isStable = state.stableFrames >= CONFIG.STABLE_FRAMES_REQUIRED;
+  const eyesOpen = checkEyesOpen(result?.faceBlendshapes);
+  
+  // Draw oval - green only when face is properly positioned AND stable
+  drawOval(faceInOval && isStable && eyesOpen);
+  
+  // Update UI based on phase
+  if (state.phase === "scanning") {
+    if (!faces?.length) {
+      setStatus("No face", "warn");
+      setHint("Position your face", "Move into the oval");
+    } else if (faceTooSmall) {
+      setStatus("Move closer", "warn");
+      setHint("Too far away", "Move closer to the camera");
+    } else if (faceTooBig) {
+      setStatus("Move back", "warn");
+      setHint("Too close", "Move back from the camera");
+    } else if (faceOffCenter) {
+      setStatus("Center face", "warn");
+      setHint("Off center", "Move your face to the center");
+    } else if (!faceInOval) {
+      setStatus("Adjust position", "warn");
+      setHint("Fit in oval", "Adjust your face position");
+    } else if (!eyesOpen) {
+      setStatus("Open eyes", "warn");
+      setHint("Keep eyes open", "Look at the camera");
+    } else if (!isStable) {
+      setStatus("Hold still", "warn");
+      setHint("Almost ready", "Keep steady for a moment");
+    } else {
+      setStatus("Ready", "ok");
+      setHint("Perfect!", "Tap Start to capture");
+      setButton("Start", true);
+    }
+  } else if (state.phase === "capturing") {
+    const elapsed = now - state.captureStartMs;
+    
+    // Timeout check
+    if (elapsed > CONFIG.CAPTURE_WINDOW_MS && state.captured.length < CONFIG.TARGET_FRAMES) {
+      state.phase = "scanning";
+      state.captured = [];
+      updateProgress();
+      setStatus("Too slow", "bad");
+      setHint("Try again", "Keep your face steady in the oval");
+      setButton("Start", true);
+      requestAnimationFrame(loop);
+      return;
+    }
+    
+    // Only capture when face is properly positioned
+    const canCapture = faceInOval && eyesOpen && isStable;
+    const spacing = now - state.lastCaptureMs;
+    
+    if (canCapture && faceBox && spacing >= CONFIG.MIN_SPACING_MS) {
+      const pad = faceBox.w * 0.15;
+      const cropBox = {
+        x: Math.max(0, faceBox.x - pad),
+        y: Math.max(0, faceBox.y - pad),
+        w: Math.min(vw, faceBox.w + pad * 2),
+        h: Math.min(vh, faceBox.h + pad * 2)
+      };
+      
+      if (checkQuality(cropBox.x, cropBox.y, cropBox.w, cropBox.h)) {
+        const image = captureFrame(cropBox);
+        state.captured.push({
+          frame_id: state.captured.length,
+          timestamp: Date.now(),
+          image,
+          hash: `${state.captured.length}-${state.nonce}-${Date.now()}`
+        });
+        state.lastCaptureMs = now;
+        updateProgress();
+        
+        // Check if done
+        if (state.captured.length >= CONFIG.TARGET_FRAMES) {
+          verify();
+          return;
+        }
+      }
+    }
+    
+    // Show appropriate message during capture
+    if (!canCapture) {
+      setStatus("Reposition", "warn");
+      setHint("Face moved", "Keep your face in the oval");
+    } else {
+      setStatus(`Capturing ${state.captured.length}/${CONFIG.TARGET_FRAMES}`, "ok");
+      setHint("Hold still", "Capturing frames...");
+    }
+  }
+  
+  requestAnimationFrame(loop);
+}
+
+/***********************************************************************
+ * VERIFICATION
+ ***********************************************************************/
+async function verify() {
+  state.phase = "verifying";
+  setLoading(true, "Verifying...");
+  setStatus("Verifying", "warn");
+  
+  const result = await apiVerify(state.captured);
+  
+  setLoading(false);
+  state.phase = "done";
+  
+  if (result?.decision === "PASS") {
+    const best = state.captured[result.best_frame_id] || state.captured[state.captured.length - 1];
+    showResult(true, best.image, `Confidence: ${Math.round(result.confidence * 100)}%`);
+  } else {
+    showResult(false, state.captured[0]?.image, "Verification failed");
+  }
+}
+
+/***********************************************************************
+ * ACTIONS
+ ***********************************************************************/
+async function handleMainButton() {
+  setError("");
+  
+  if (state.phase === "init" || state.phase === "ready") {
+    // Enable camera
+    setButton("Starting...", false);
+    setStatus("Loading...", "warn");
+    
+    // Load MediaPipe first
+    if (!state.faceLandmarker) {
+      setHint("Loading face detection...", "Please wait");
+      const ok = await loadMediaPipe();
+      if (!ok) {
+        setButton("Retry", true);
+        setStatus("Error", "bad");
+        return;
+      }
+    }
+    
+    // Start camera
+    setHint("Starting camera...", "Allow camera access if prompted");
+    const camOk = await startCamera();
+    if (!camOk) {
+      setButton("Enable Camera", true);
+      setStatus("Camera error", "bad");
+      return;
+    }
+    
+    // Start session (mock mode always succeeds)
+    setHint("Initializing...", "Almost ready");
+    const sessionOk = await apiStartSession();
+    if (!sessionOk) {
+      setError("Could not start session. Check your connection.");
+      setButton("Retry", true);
+      setStatus("Session error", "bad");
+      return;
+    }
+    
+    // Success - start scanning
+    state.phase = "scanning";
+    state.stableFrames = 0;
+    setButton("Start", false);
+    setStatus("Scanning", "warn");
+    setHint("Position your face", "Fit inside the oval");
+    loop();
+    
+  } else if (state.phase === "scanning") {
+    // Start capture
+    state.phase = "capturing";
+    state.captured = [];
+    state.captureStartMs = performance.now();
+    state.lastCaptureMs = 0;
+    updateProgress();
+    setButton("Capturing...", false);
+  }
+}
+
+function handleRetry() {
+  stopCamera();
+  hideResult();
+  
+  state.phase = "init";
+  state.stableFrames = 0;
+  state.captured = [];
+  
+  setStatus("Ready", "");
+  setHint("Enable camera to start", "Position your face in the oval");
+  setButton("Enable Camera", true);
+  setError("");
+  updateProgress();
+  
+  resizeCanvas();
+  drawOval(false);
+}
+
+/***********************************************************************
+ * INIT
+ ***********************************************************************/
+$("btnMain").addEventListener("click", handleMainButton);
+$("btnRetry").addEventListener("click", handleRetry);
+window.addEventListener("resize", resizeCanvas);
+
+// Initial draw
+resizeCanvas();
+drawOval(false);
+setButton("Enable Camera", true);
+</script>
 </body>
 </html>
