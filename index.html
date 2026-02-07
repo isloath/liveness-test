@@ -3,240 +3,1517 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#09090b">
     <title>Identity Verification</title>
+    
+    <!-- MediaPipe Vision WASM -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm/vision_bundle.mjs" type="module"></script>
+    
     <style>
         :root {
-            --bg: #09090b; --surface: #18181b; --border: #3f3f46;
-            --text: #fafafa; --text-muted: #a1a1aa;
-            --success: #22c55e; --warning: #f59e0b; --error: #ef4444; --primary: #3b82f6;
+            --bg: #09090b;
+            --surface: #18181b;
+            --surface-2: #27272a;
+            --border: #3f3f46;
+            --text: #fafafa;
+            --text-muted: #a1a1aa;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --primary: #3b82f6;
         }
+
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; justify-content: center; padding: 20px; }
-        .app { width: 100%; max-width: 440px; }
-        .camera-container { position: relative; width: 100%; aspect-ratio: 3/4; background: #000; border-radius: 24px; overflow: hidden; margin-bottom: 16px; border: 1px solid var(--border); }
-        #video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-        .face-oval { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 65%; height: 70%; border: 3px solid rgba(255,255,255,0.2); border-radius: 50%; transition: all 0.3s; }
-        .face-oval.valid { border-color: var(--success); box-shadow: 0 0 0 8px rgba(34,197,94,0.2); }
-        .face-oval.detecting { border-color: var(--warning); }
-        .status-bar { position: absolute; bottom: 0; left: 0; right: 0; padding: 20px; background: linear-gradient(transparent, rgba(0,0,0,0.8)); text-align: center; }
-        .btn { width: 100%; padding: 16px; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; background: var(--primary); color: white; }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .quality-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 16px; }
-        .q-item { background: var(--surface); padding: 8px; border-radius: 8px; font-size: 10px; text-align: center; color: var(--text-muted); border: 1px solid var(--border); }
-        .q-item.pass { border-color: var(--success); color: var(--success); }
-        .progress-bar { position: absolute; top: 0; left: 0; height: 4px; background: var(--success); width: 0%; transition: width 0.3s; }
-        #debug { position: absolute; top: 10px; right: 10px; font-size: 10px; color: yellow; pointer-events: none; }
-        .hidden { display: none; }
+
+        html {
+            height: 100%;
+            height: -webkit-fill-available;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            overflow-x: hidden;
+        }
+
+        .app {
+            width: 100%;
+            max-width: 440px;
+            padding: 12px;
+            padding-bottom: calc(12px + env(safe-area-inset-bottom));
+        }
+
+        /* Mobile-specific adjustments */
+        @media (max-width: 480px) {
+            .app {
+                padding: 8px;
+                padding-bottom: calc(8px + env(safe-area-inset-bottom));
+            }
+            
+            .header h1 { font-size: 18px; }
+            .header p { font-size: 12px; }
+            
+            .camera-container {
+                border-radius: 16px;
+                margin-bottom: 12px;
+            }
+            
+            .quality-panel {
+                padding: 10px;
+                border-radius: 12px;
+                margin-bottom: 12px;
+            }
+            
+            .quality-grid {
+                gap: 4px;
+            }
+            
+            .quality-item {
+                padding: 6px 2px;
+                font-size: 8px;
+            }
+            
+            .quality-icon {
+                font-size: 12px;
+            }
+            
+            .signals-row {
+                gap: 4px;
+                margin-top: 8px;
+                padding-top: 8px;
+            }
+            
+            .signal-item {
+                padding: 4px;
+            }
+            
+            .signal-label { font-size: 7px; }
+            .signal-value { font-size: 10px; }
+            
+            .btn {
+                padding: 12px;
+                font-size: 14px;
+                border-radius: 10px;
+            }
+            
+            .debug-panel {
+                font-size: 8px;
+                padding: 6px;
+                max-width: 100px;
+            }
+            
+            .status-text h2 { font-size: 14px; }
+            .status-text p { font-size: 11px; }
+}
+
+        /* Small phones */
+        @media (max-width: 360px) {
+            .quality-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+            
+            .quality-item {
+                padding: 4px 1px;
+            }
+            
+            .debug-panel {
+                display: none;
+            }
+        }
+
+        /* Landscape mode - hide some elements */
+        @media (max-height: 500px) and (orientation: landscape) {
+            .header { display: none; }
+            .signals-row { display: none; }
+            .debug-panel { display: none; }
+            
+            .camera-container {
+                aspect-ratio: 4/3;
+                max-height: 70vh;
+            }
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 16px;
+        }
+        .header h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+        .header p { font-size: 13px; color: var(--text-muted); }
+
+        /* Camera */
+        .camera-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 3/4;
+            background: #000;
+            border-radius: 20px;
+            overflow: hidden;
+            margin-bottom: 16px;
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        .overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+
+        /* Regula-like oval UI */
+        .oval-ui{
+            position:absolute;
+            inset:0;
+            pointer-events:none;
+            transition: filter 0.2s ease;
+        }
+        .oval-svg{ width:100%; height:100%; display:block; }
+        .oval-dim{ fill: rgba(0,0,0,0.72); }
+        .oval-ring{
+            fill:none;
+            stroke: rgba(255,255,255,0.28);
+            stroke-width: 2.2;
+        }
+        .oval-glow{
+            fill:none;
+            stroke: rgba(255,255,255,0.10);
+            stroke-width: 10;
+            filter: blur(2px);
+            opacity: 0.0;
+            transition: opacity 0.2s ease;
+        }
+        .oval-ui.detecting .oval-ring{ stroke: rgba(245,158,11,0.95); }
+        .oval-ui.detecting .oval-glow{ opacity: 0.35; stroke: rgba(245,158,11,0.55); }
+        .oval-ui.valid .oval-ring{ stroke: rgba(34,197,94,0.95); }
+        .oval-ui.valid .oval-glow{ opacity: 0.35; stroke: rgba(34,197,94,0.55); }
+        .oval-ui.invalid .oval-ring{ stroke: rgba(239,68,68,0.95); }
+        .oval-ui.invalid .oval-glow{ opacity: 0.35; stroke: rgba(239,68,68,0.55); }
+
+        /* Progress */
+        .progress-container {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+        }
+        .progress-bar {
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--success);
+            transition: width 0.3s;
+        }
+
+        /* Frame indicators */
+        .frames-indicator {
+            position: absolute;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+        }
+        .frame-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            transition: all 0.2s;
+        }
+        .frame-dot.captured { background: var(--success); }
+        .frame-dot.current { background: var(--warning); animation: pulse 0.8s ease infinite; }
+        @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.3); } }
+
+        /* Status */
+        .status-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 16px;
+            background: linear-gradient(transparent, rgba(0,0,0,0.85));
+        }
+        .status-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .status-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+        .status-text h2 { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+        .status-text p { font-size: 12px; color: var(--text-muted); }
+
+        /* Debug info */
+        .debug-panel {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: rgba(0,0,0,0.7);
+            padding: 8px;
+            border-radius: 8px;
+            font-size: 9px;
+            font-family: monospace;
+            color: var(--text-muted);
+            max-width: 120px;
+        }
+        .debug-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2px;
+        }
+        .debug-value { color: var(--text); }
+        .debug-value.pass { color: var(--success); }
+        .debug-value.fail { color: var(--error); }
+
+        /* Loading overlay */
+        .loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            border-radius: 20px;
+        }
+        .loading-overlay.active { display: flex; }
+        .spinner {
+            width: 44px;
+            height: 44px;
+            border: 3px solid rgba(255,255,255,0.1);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { font-size: 14px; color: var(--text-muted); text-align: center; }
+
+        /* Quality panel */
+        .quality-panel {
+            background: var(--surface);
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 16px;
+        }
+        .quality-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .quality-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .quality-mode {
+            font-size: 9px;
+            padding: 3px 8px;
+            background: rgba(34,197,94,0.15);
+            color: var(--success);
+            border-radius: 8px;
+        }
+        .quality-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+        }
+        .quality-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 8px 4px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px;
+            font-size: 9px;
+            color: var(--text-muted);
+            text-align: center;
+        }
+        .quality-icon {
+            font-size: 14px;
+            transition: all 0.15s;
+        }
+        .quality-item.pass .quality-icon { color: var(--success); }
+        .quality-item.fail .quality-icon { color: var(--error); }
+
+        /* Soft signals */
+        .signals-row {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+        }
+        .signal-item {
+            flex: 1;
+            padding: 6px;
+            background: rgba(255,255,255,0.02);
+            border-radius: 6px;
+            text-align: center;
+        }
+        .signal-label { font-size: 8px; color: var(--text-muted); margin-bottom: 2px; }
+        .signal-value { font-size: 11px; font-weight: 600; }
+
+        /* Button */
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Result screen */
+        .result-screen {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            padding: 40px 20px;
+        }
+        .result-screen.active { display: flex; }
+        .result-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            margin-bottom: 20px;
+        }
+        .result-icon.success { background: rgba(34,197,94,0.12); }
+        .result-icon.error { background: rgba(239,68,68,0.12); }
+        .result-title { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+        .result-subtitle { font-size: 14px; color: var(--text-muted); margin-bottom: 24px; }
+        .result-photo {
+            width: 100px;
+            height: 130px;
+            object-fit: cover;
+            border-radius: 12px;
+            border: 3px solid var(--success);
+            margin-bottom: 24px;
+        }
+
+        .hidden { display: none !important; }
+        #canvas, #cropCanvas { display: none; }
     </style>
 </head>
 <body>
     <div class="app">
+        <!-- Main Flow -->
         <div id="mainFlow">
+            <div class="header">
+                <h1>Identity Verification</h1>
+                <p>Position your face and hold naturally</p>
+            </div>
+
             <div class="camera-container">
                 <video id="video" autoplay playsinline muted></video>
-                <div class="progress-bar" id="progress"></div>
-                <div class="face-oval" id="oval"></div>
-                <div id="debug"></div>
-                <div class="status-bar">
-                    <h2 id="statusTitle">Ready</h2>
-                    <p id="statusSubtitle" style="font-size: 12px; color: var(--text-muted)">Align your face to begin</p>
+                
+                <div class="overlay">
+                    <div class="oval-ui" id="faceOval" aria-hidden="true">
+    <svg class="oval-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <defs>
+            <mask id="ovalHole">
+                <rect x="0" y="0" width="100" height="100" fill="white"></rect>
+                <ellipse cx="50" cy="50" rx="28" ry="34" fill="black"></ellipse>
+            </mask>
+        </defs>
+        <rect class="oval-dim" x="0" y="0" width="100" height="100" mask="url(#ovalHole)"></rect>
+        <ellipse class="oval-ring" cx="50" cy="50" rx="28" ry="34"></ellipse>
+        <ellipse class="oval-glow" cx="50" cy="50" rx="28" ry="34"></ellipse>
+    </svg>
+</div>
+                    
+                    <div class="progress-container">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill"></div>
+                        </div>
+                    </div>
+
+                    <div class="frames-indicator" id="framesIndicator">
+                        <div class="frame-dot" id="frame0"></div>
+                        <div class="frame-dot" id="frame1"></div>
+                        <div class="frame-dot" id="frame2"></div>
+                        <div class="frame-dot" id="frame3"></div>
+                        <div class="frame-dot" id="frame4"></div>
+                    </div>
+
+                    <div class="debug-panel" id="debugPanel">
+                        <div class="debug-row"><span>FPS:</span><span class="debug-value" id="dbgFps">--</span></div>
+                        <div class="debug-row"><span>Face:</span><span class="debug-value" id="dbgFace">--</span></div>
+                        <div class="debug-row"><span>Yaw:</span><span class="debug-value" id="dbgYaw">--</span></div>
+                        <div class="debug-row"><span>Pitch:</span><span class="debug-value" id="dbgPitch">--</span></div>
+<div class="debug-row"><span>Luma:</span><span class="debug-value" id="dbgLuma">--</span></div>
+                        <div class="debug-row"><span>Sharp:</span><span class="debug-value" id="dbgSharp">--</span></div>
+                    </div>
+
+                    <div class="status-bar">
+                        <div class="status-row">
+                            <div class="status-icon" id="statusIcon">👤</div>
+                            <div class="status-text">
+                                <h2 id="statusTitle">Ready</h2>
+                                <p id="statusSubtitle">Tap Start to begin</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="loading-overlay" id="loadingOverlay">
+                    <div class="spinner"></div>
+                    <div class="loading-text" id="loadingText">Initializing...</div>
                 </div>
             </div>
-            <button class="btn" id="startBtn">Start Verification</button>
-            <div class="quality-grid">
-                <div class="q-item" id="q-face">Face</div>
-                <div class="q-item" id="q-pose">Pose</div>
-                <div class="q-item" id="q-eyes">Eyes</div>
-                <div class="q-item" id="q-still">Still</div>
+
+            <div class="quality-panel">
+                <div class="quality-header">
+                    <span class="quality-title">Quality Gates</span>
+                    <span class="quality-mode" id="modeLabel">Loading...</span>
+                </div>
+                <div class="quality-grid">
+                    <div class="quality-item" id="qFace">
+                        <span class="quality-icon">👤</span>
+                        <span>Face</span>
+                    </div>
+                    <div class="quality-item" id="qSize">
+                        <span class="quality-icon">⤢</span>
+                        <span>Size</span>
+                    </div>
+                    <div class="quality-item" id="qPose">
+                        <span class="quality-icon">↔</span>
+                        <span>Pose</span>
+                    </div>
+<div class="quality-item" id="qLight">
+                        <span class="quality-icon">☀</span>
+                        <span>Light</span>
+                    </div>
+                    <div class="quality-item" id="qSharp">
+                        <span class="quality-icon">◉</span>
+                        <span>Sharp</span>
+                    </div>
+                    <div class="quality-item" id="qLandmarks">
+                        <span class="quality-icon">⬡</span>
+                        <span>Visible</span>
+                    </div>
+                    <div class="quality-item" id="qMotion">
+                        <span class="quality-icon">↺</span>
+                        <span>Motion</span>
+                    </div>
+                </div>
+
+                <div class="signals-row">
+                    <div class="signal-item">
+                        <div class="signal-label">Jitter</div>
+                        <div class="signal-value" id="sigJitter">--</div>
+                    </div>
+                    <div class="signal-item">
+                        <div class="signal-label">Entropy</div>
+                        <div class="signal-value" id="sigEntropy">--</div>
+                    </div>
+                    <div class="signal-item">
+                        <div class="signal-label">Uniformity</div>
+                        <div class="signal-value" id="sigUniform">--</div>
+                    </div>
+                </div>
             </div>
+
+            <button class="btn btn-primary" id="startBtn" disabled>Loading MediaPipe...</button>
         </div>
 
-        <div id="resultScreen" class="hidden" style="text-align: center; padding-top: 50px;">
-            <h1 id="resTitle">Result</h1>
-            <p id="resMsg"></p>
-            <button class="btn" onclick="location.reload()" style="margin-top: 20px;">Try Again</button>
+        <!-- Result Screen -->
+        <div class="result-screen" id="resultScreen">
+            <div class="result-icon success" id="resultIcon">✓</div>
+            <h1 class="result-title" id="resultTitle">Verified!</h1>
+            <p class="result-subtitle" id="resultSubtitle">Identity confirmed</p>
+            <img class="result-photo" id="resultPhoto" src="" alt="">
+            <button class="btn btn-primary" id="doneBtn">Done</button>
         </div>
     </div>
 
-    <canvas id="tempCanvas" class="hidden"></canvas>
-    <canvas id="cropCanvas" width="224" height="224" class="hidden"></canvas>
+    <canvas id="canvas"></canvas>
+    <canvas id="cropCanvas" width="224" height="224"></canvas>
 
     <script type="module">
-        import { FaceDetector, FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/+esm';
+    /**
+     * PASSIVE FACE LIVENESS - CLIENT
+     * ===============================
+     * 
+     * MediaPipe Face Detector + Landmarker (WASM)
+     * Hard gates + Soft signals + Randomized capture
+     * 
+     * Outputs 5 frames with metadata to server for PAD scoring
+     */
 
-        const CONFIG = {
-            API_URL: 'http://localhost:5000',
-            FACE_CONFIDENCE: 0.85,
-            MAX_YAW: 22, MAX_PITCH: 20, MAX_ROLL: 15,
-            MIN_EAR: 0.18, 
-            STABILITY_THRESHOLD: 0.012,
-            STABILITY_REQUIRED_FRAMES: 5,
-            TOTAL_FRAMES: 5,
-            MIN_FRAME_SPACING: 450
-        };
+    import { FaceDetector, FaceLandmarker, FilesetResolver } from 
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/+esm';
 
-        const state = {
-            isRunning: false, detector: null, landmarker: null, stream: null,
-            captured: [], lastCapture: 0, stability: 0, history: [], session: null
-        };
+    // ======================== CONFIGURATION ========================
+    const CONFIG = {
+        API_URL: 'http://localhost:5000',
+        
+        // Hard Gates (adjusted per your spec)
+        FACE_CONFIDENCE: 0.85,
+        FACE_RATIO_MIN: 0.08,    // Minimum face size
+        FACE_RATIO_MAX: 0.55,    // Maximum face size
+        MAX_YAW: 25,
+        MAX_PITCH: 25,      // Relaxed - natural phone/laptop viewing angle
+        MAX_ROLL: 18,
+        LUMA_MIN: 50,
+        LUMA_MAX: 200,
+        LUMA_RANGE_MIN: 35,
+        SHARPNESS_MIN: 60,      // Laplacian variance
+        
+        // Capture settings
+        TOTAL_FRAMES: 5,
+        CAPTURE_WINDOW_MS: 3000,
+        MIN_FRAME_SPACING_MS: 250,
+        MIN_POSE_CHANGE_YAW: 3,
+        MIN_POSE_CHANGE_PITCH: 2,
+        FRAMES_WITH_POSE_CHANGE: 2,
+        
+        // Timing
+        DETECTION_INTERVAL_MS: 80,  // ~12 FPS
+        
+        // Anti-tamper
+        SESSION_TTL_MS: 30000,
+        
+        // Image output
+        CROP_SIZE: 224,
+        JPEG_QUALITY: 0.75,
+    };
 
-        async function init() {
-            const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm');
-            state.detector = await FaceDetector.createFromOptions(vision, { baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite`, delegate: 'GPU' }, runningMode: 'VIDEO' });
-            state.landmarker = await FaceLandmarker.createFromOptions(vision, { baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`, delegate: 'GPU' }, runningMode: 'VIDEO', outputFaceBlendshapes: true });
-            document.getElementById('statusTitle').innerText = 'System Ready';
-        }
+    // ======================== STATE ========================
+    const state = {
+        // MediaPipe
+        faceDetector: null,
+        faceLandmarker: null,
+        
+        // Camera
+        stream: null,
+        video: null,
+        
+        // Detection loop
+        isRunning: false,
+        loopId: null,
+        lastFrameTime: 0,
+        fps: 0,
+        
+        // Session
+        sessionId: null,
+        nonce: null,
+        sessionStart: 0,
+        
+        // Quality tracking
+        currentQuality: {},
+        poseHistory: [],
+        landmarkHistory: [],
+        
+        // Capture
+        capturedFrames: [],
+        captureSchedule: [],
+        lastCaptureTime: 0,
+        validFrameCount: 0,
+        
+        // Soft signals
+        jitterScore: 0,
+        entropyScore: 0,
+        uniformityScore: 0,
+    };
 
-        async function start() {
-            state.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 }, audio: false });
-            document.getElementById('video').srcObject = state.stream;
+    // ======================== DOM ========================
+    const $ = id => document.getElementById(id);
+    const video = $('video');
+    const canvas = $('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const cropCanvas = $('cropCanvas');
+    const cropCtx = cropCanvas.getContext('2d');
+
+    // ======================== INITIALIZATION ========================
+    
+    async function initialize() {
+        showLoading('Loading MediaPipe...');
+        
+        try {
+            const vision = await FilesetResolver.forVisionTasks(
+                'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm'
+            );
             
-            const resp = await fetch(`${CONFIG.API_URL}/session/start`, { method: 'POST' }).catch(() => ({ json: () => ({ session_id: 'demo', nonce: 'demo' }) }));
-            state.session = await resp.json();
-            
-            state.isRunning = true;
-            state.captured = [];
-            loop();
-        }
-
-        function loop() {
-            if (!state.isRunning) return;
-            requestAnimationFrame(loop);
-
-            const video = document.getElementById('video');
-            if (video.readyState < 2) return;
-
-            const canvas = document.getElementById('tempCanvas');
-            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0);
-
-            const ts = performance.now();
-            const det = state.detector.detectForVideo(video, ts).detections[0];
-            const land = state.landmarker.detectForVideo(video, ts);
-
-            if (!det || !land.faceLandmarks[0]) {
-                updateUI(null, false);
-                return;
-            }
-
-            const results = checkGates(det, land);
-            const isStill = checkStill(land.faceLandmarks[0]);
-            
-            updateUI(results, isStill);
-
-            if (results.all && isStill) {
-                state.stability++;
-                if (state.stability > CONFIG.STABILITY_REQUIRED_FRAMES && (Date.now() - state.lastCapture > CONFIG.MIN_FRAME_SPACING)) {
-                    capture(det.boundingBox, canvas);
-                }
-            } else {
-                state.stability = 0;
-            }
-        }
-
-        function checkGates(det, land) {
-            const box = det.boundingBox;
-            const landmarks = land.faceLandmarks[0];
-            const shapes = land.faceBlendshapes[0]?.categories || [];
-
-            // 1. Pose estimation (Simplified)
-            const yaw = (landmarks[4].x - (landmarks[33].x + landmarks[263].x) / 2) * 100;
-            const pitch = (landmarks[4].y - (landmarks[33].y + landmarks[263].y) / 2) * 100;
-
-            // 2. Eye check using MediaPipe Blendshapes (Robust on mobile)
-            const lb = shapes.find(s => s.categoryName === 'eyeBlinkLeft')?.score || 0;
-            const rb = shapes.find(s => s.categoryName === 'eyeBlinkRight')?.score || 0;
-            const eyesOpen = lb < 0.4 && rb < 0.4;
-
-            const gates = {
-                face: det.categories[0].score > CONFIG.FACE_CONFIDENCE,
-                pose: Math.abs(yaw) < CONFIG.MAX_YAW && Math.abs(pitch) < CONFIG.MAX_PITCH,
-                eyes: eyesOpen
-            };
-
-            return { ...gates, all: Object.values(gates).every(v => v), yaw, pitch };
-        }
-
-        function checkStill(points) {
-            const curr = points.slice(0, 10);
-            if (state.history.length === 0) { state.history.push(curr); return false; }
-            const prev = state.history[state.history.length - 1];
-            state.history.push(curr); if (state.history.length > 5) state.history.shift();
-            
-            let d = 0;
-            for (let i = 0; i < 10; i++) d += Math.hypot(curr[i].x - prev[i].x, curr[i].y - prev[i].y);
-            return (d / 10) < CONFIG.STABILITY_THRESHOLD;
-        }
-
-        function capture(bbox, srcCanvas) {
-            const crop = document.getElementById('cropCanvas');
-            const ctx = crop.getContext('2d');
-            const pad = bbox.width * 0.2;
-            ctx.drawImage(srcCanvas, bbox.originX - pad, bbox.originY - pad, bbox.width + pad*2, bbox.height + pad*2, 0, 0, 224, 224);
-            
-            state.captured.push({
-                image: crop.toDataURL('image/jpeg', 0.7),
-                frame_id: state.captured.length,
-                timestamp: Date.now()
+            // Face Detector
+            state.faceDetector = await FaceDetector.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
+                    delegate: 'GPU'
+                },
+                runningMode: 'VIDEO',
+                minDetectionConfidence: 0.5
             });
-            state.lastCapture = Date.now();
-            document.getElementById('progress').style.width = `${(state.captured.length / CONFIG.TOTAL_FRAMES) * 100}%`;
-
-            if (state.captured.length >= CONFIG.TOTAL_FRAMES) upload();
+            
+            // Face Landmarker
+            state.faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+                    delegate: 'GPU'
+                },
+                runningMode: 'VIDEO',
+                numFaces: 1,
+                minFaceDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5,
+                outputFaceBlendshapes: true
+            });
+            
+            console.log('✓ MediaPipe loaded');
+            
+            hideLoading();
+            $('modeLabel').textContent = 'MediaPipe WASM';
+            $('startBtn').textContent = 'Start Verification';
+            $('startBtn').disabled = false;
+            
+        } catch (error) {
+            console.error('MediaPipe failed:', error);
+            $('loadingText').textContent = 'Failed to load. Please refresh.';
         }
+    }
 
-        async function upload() {
-            state.isRunning = false;
-            document.getElementById('statusTitle').innerText = 'Verifying...';
-            try {
-                const res = await fetch(`${CONFIG.API_URL}/verify`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        session_id: state.session.session_id,
-                        nonce: state.session.nonce,
-                        frames: state.captured,
-                        client_metadata: { user_agent: navigator.userAgent }
-                    })
-                });
-                const data = await res.json();
-                showResult(data);
-            } catch (e) {
-                showResult({ decision: 'ERROR', message: 'Network failed' });
+    // ======================== SESSION MANAGEMENT ========================
+    
+    async function startSession() {
+        try {
+            const response = await fetch(`${CONFIG.API_URL}/session/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (!response.ok) throw new Error('Session failed');
+            
+            const data = await response.json();
+            state.sessionId = data.session_id;
+            state.nonce = data.nonce;
+            state.sessionStart = Date.now();
+            
+            console.log('✓ Session started:', state.sessionId);
+            return true;
+            
+        } catch (error) {
+            console.error('Session error:', error);
+            // Continue without session for demo
+            state.sessionId = 'demo-' + Date.now();
+            state.nonce = Math.random().toString(36).substring(2);
+            state.sessionStart = Date.now();
+            return true;
+        }
+    }
+    
+    function generateCaptureSchedule() {
+        // Randomized capture times within the window
+        const schedule = [];
+        const windowMs = CONFIG.CAPTURE_WINDOW_MS;
+        const numFrames = CONFIG.TOTAL_FRAMES;
+        const minSpacing = CONFIG.MIN_FRAME_SPACING_MS;
+        
+        // Divide window into segments with randomization
+        const segmentSize = windowMs / numFrames;
+        
+        for (let i = 0; i < numFrames; i++) {
+            const baseTime = i * segmentSize;
+            const jitter = Math.random() * (segmentSize - minSpacing);
+            schedule.push(Math.round(baseTime + jitter));
+        }
+        
+        // Ensure minimum spacing
+        for (let i = 1; i < schedule.length; i++) {
+            if (schedule[i] - schedule[i-1] < minSpacing) {
+                schedule[i] = schedule[i-1] + minSpacing;
             }
         }
+        
+        console.log('Capture schedule:', schedule);
+        return schedule;
+    }
 
-        function updateUI(res, still) {
-            const oval = document.getElementById('oval');
-            if (!res) {
-                oval.className = 'face-oval';
-                document.getElementById('statusTitle').innerText = 'No Face';
-                return;
+    // ======================== HARD GATES ========================
+    
+    function checkHardGates(detection, landmarks, blendshapes, imageData) {
+        const gates = {
+            face: false,
+            size: false,
+            pose: false,            light: false,
+            sharp: false,
+            landmarks: false,
+            motion: false
+        };
+        
+        let message = 'Position your face in the oval';
+        const w = canvas.width;
+        const h = canvas.height;
+        
+        // 1. Face detected with confidence
+        if (!detection || detection.categories[0].score < CONFIG.FACE_CONFIDENCE) {
+            message = 'No face detected';
+            return { gates, allPass: false, message, pose: null };
+        }
+        gates.face = true;
+        
+        const bbox = detection.boundingBox;
+        
+        // 2. Face size ratio
+        const faceArea = bbox.width * bbox.height;
+        const frameArea = w * h;
+        const ratio = faceArea / frameArea;
+        
+        if (ratio < CONFIG.FACE_RATIO_MIN) {
+            message = 'Move closer';
+        } else if (ratio > CONFIG.FACE_RATIO_MAX) {
+            message = 'Move back';
+        } else {
+            gates.size = true;
+        }
+        
+        // 3. Pose estimation (from landmarks) - STRICT for reliable eye detection
+        const pose = estimatePose(landmarks);
+        
+        // Pose must be frontal for reliable eye detection
+        if (Math.abs(pose.yaw) > CONFIG.MAX_YAW) {
+            message = pose.yaw > 0 ? 'Turn head left' : 'Turn head right';
+        } else if (Math.abs(pose.pitch) > CONFIG.MAX_PITCH) {
+            message = pose.pitch > 0 ? 'Look up at camera' : 'Raise your head';
+        } else if (Math.abs(pose.roll) > CONFIG.MAX_ROLL) {
+            message = 'Straighten head';
+        } else {
+            gates.pose = true;
+        }
+        // 4. Lighting check
+        const lighting = analyzeLighting(imageData);
+        if (lighting.mean < CONFIG.LUMA_MIN) {
+            message = 'Too dark - more light needed';
+        } else if (lighting.mean > CONFIG.LUMA_MAX) {
+            message = 'Too bright';
+        } else if (lighting.range < CONFIG.LUMA_RANGE_MIN) {
+            message = 'Low contrast';
+        } else {
+            gates.light = true;
+        }
+        
+        // 6. Sharpness
+        const sharpness = calculateSharpness(imageData);
+        if (sharpness < CONFIG.SHARPNESS_MIN) {
+            message = 'Image blurry - hold still';
+        } else {
+            gates.sharp = true;
+        }
+        
+        // 7. Key landmarks visible
+        const landmarksVisible = checkLandmarksVisible(landmarks);
+        if (!landmarksVisible) {
+            message = 'Face partially hidden';
+        } else {
+            gates.landmarks = true;
+        }
+        
+        // 8. Motion check (natural movement)
+        const hasMotion = checkNaturalMotion(pose);
+        gates.motion = hasMotion || state.capturedFrames.length === 0;
+        
+        const allPass = Object.values(gates).every(v => v);
+        if (allPass) message = 'Perfect - capturing...';
+        
+        return { gates, allPass, message, pose, lighting, sharpness };
+    }
+
+    // ======================== POSE ESTIMATION ========================
+    
+    function estimatePose(landmarks) {
+        if (!landmarks || landmarks.length < 468) {
+            return { yaw: 0, pitch: 0, roll: 0 };
+        }
+        
+        // Key landmark indices
+        const noseTip = landmarks[4];
+        const leftEyeOuter = landmarks[33];
+        const rightEyeOuter = landmarks[263];
+        const leftMouth = landmarks[61];
+        const rightMouth = landmarks[291];
+        const chin = landmarks[152];
+        const forehead = landmarks[10];
+        
+        // Eye distance for normalization
+        const eyeDist = Math.sqrt(
+            Math.pow(rightEyeOuter.x - leftEyeOuter.x, 2) +
+            Math.pow(rightEyeOuter.y - leftEyeOuter.y, 2)
+        );
+        
+        // Yaw: nose offset from eye midpoint
+        const eyeMidX = (leftEyeOuter.x + rightEyeOuter.x) / 2;
+        const noseOffsetX = (noseTip.x - eyeMidX) / eyeDist;
+        const yaw = Math.atan(noseOffsetX * 2) * (180 / Math.PI) * 1.5;
+        
+        // Pitch: vertical nose position relative to eyes
+        const eyeMidY = (leftEyeOuter.y + rightEyeOuter.y) / 2;
+        const noseOffsetY = (noseTip.y - eyeMidY) / eyeDist;
+        const pitch = Math.atan(noseOffsetY) * (180 / Math.PI) * 0.8;  // Reduced multiplier
+        
+        // Roll: eye line angle
+        const roll = Math.atan2(
+            rightEyeOuter.y - leftEyeOuter.y,
+            rightEyeOuter.x - leftEyeOuter.x
+        ) * (180 / Math.PI);
+        
+        return { yaw, pitch, roll };
+    }
+
+    // ======================== IMAGE ANALYSIS ========================
+    
+    function analyzeLighting(imageData) {
+        const data = imageData.data;
+        let sum = 0;
+        let min = 255;
+        let max = 0;
+        const samples = Math.floor(data.length / 16); // Sample every 4th pixel
+        
+        for (let i = 0; i < data.length; i += 16) {
+            const luma = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+            sum += luma;
+            if (luma < min) min = luma;
+            if (luma > max) max = luma;
+        }
+        
+        return {
+            mean: sum / samples,
+            range: max - min,
+            min,
+            max
+        };
+    }
+    
+    function calculateSharpness(imageData) {
+        // Laplacian variance
+        const w = canvas.width;
+        const h = canvas.height;
+        const data = imageData.data;
+        
+        let sum = 0;
+        let sumSq = 0;
+        let count = 0;
+        
+        // Sample center region
+        const startX = Math.floor(w * 0.25);
+        const endX = Math.floor(w * 0.75);
+        const startY = Math.floor(h * 0.25);
+        const endY = Math.floor(h * 0.75);
+        
+        for (let y = startY + 1; y < endY - 1; y += 2) {
+            for (let x = startX + 1; x < endX - 1; x += 2) {
+                const idx = (y * w + x) * 4;
+                const idxUp = ((y-1) * w + x) * 4;
+                const idxDown = ((y+1) * w + x) * 4;
+                const idxLeft = (y * w + (x-1)) * 4;
+                const idxRight = (y * w + (x+1)) * 4;
+                
+                // Grayscale Laplacian
+                const center = (data[idx] + data[idx+1] + data[idx+2]) / 3;
+                const up = (data[idxUp] + data[idxUp+1] + data[idxUp+2]) / 3;
+                const down = (data[idxDown] + data[idxDown+1] + data[idxDown+2]) / 3;
+                const left = (data[idxLeft] + data[idxLeft+1] + data[idxLeft+2]) / 3;
+                const right = (data[idxRight] + data[idxRight+1] + data[idxRight+2]) / 3;
+                
+                const laplacian = Math.abs(4 * center - up - down - left - right);
+                sum += laplacian;
+                sumSq += laplacian * laplacian;
+                count++;
+            }
+        }
+        
+        const mean = sum / count;
+        const variance = (sumSq / count) - (mean * mean);
+        
+        return variance;
+    }
+    
+    function checkLandmarksVisible(landmarks) {
+        if (!landmarks || landmarks.length < 468) return false;
+        
+        // Check key landmarks have reasonable confidence
+        const keyIndices = [
+            4,    // nose tip
+            33,   // left eye outer
+            263,  // right eye outer
+            61,   // left mouth
+            291,  // right mouth
+            152,  // chin
+            10    // forehead
+        ];
+        
+        for (const idx of keyIndices) {
+            const lm = landmarks[idx];
+            if (!lm || lm.x < 0.05 || lm.x > 0.95 || lm.y < 0.05 || lm.y > 0.95) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+    // ======================== MOTION ANALYSIS ========================
+    
+    function checkNaturalMotion(currentPose) {
+        if (state.poseHistory.length < 3) {
+            state.poseHistory.push(currentPose);
+            return true;
+        }
+        
+        state.poseHistory.push(currentPose);
+        if (state.poseHistory.length > 30) {
+            state.poseHistory.shift();
+        }
+        
+        // Check for sufficient pose variation
+        let poseChangeCount = 0;
+        
+        for (let i = 1; i < state.poseHistory.length; i++) {
+            const prev = state.poseHistory[i-1];
+            const curr = state.poseHistory[i];
+            
+            const yawChange = Math.abs(curr.yaw - prev.yaw);
+            const pitchChange = Math.abs(curr.pitch - prev.pitch);
+            
+            if (yawChange >= CONFIG.MIN_POSE_CHANGE_YAW || 
+                pitchChange >= CONFIG.MIN_POSE_CHANGE_PITCH) {
+                poseChangeCount++;
+            }
+        }
+        
+        return poseChangeCount >= CONFIG.FRAMES_WITH_POSE_CHANGE;
+    }
+    
+    function calculateJitter(landmarks) {
+        if (!landmarks || state.landmarkHistory.length < 5) {
+            if (landmarks) {
+                state.landmarkHistory.push(landmarks.slice(0, 10)); // Store first 10 landmarks
+            }
+            return 0.5;
+        }
+        
+        state.landmarkHistory.push(landmarks.slice(0, 10));
+        if (state.landmarkHistory.length > 15) {
+            state.landmarkHistory.shift();
+        }
+        
+        // Calculate average movement
+        let totalMovement = 0;
+        for (let i = 1; i < state.landmarkHistory.length; i++) {
+            for (let j = 0; j < 10; j++) {
+                const prev = state.landmarkHistory[i-1][j];
+                const curr = state.landmarkHistory[i][j];
+                totalMovement += Math.sqrt(
+                    Math.pow(curr.x - prev.x, 2) + Math.pow(curr.y - prev.y, 2)
+                );
+            }
+        }
+        
+        const avgMovement = totalMovement / (state.landmarkHistory.length * 10);
+        
+        // Too static is suspicious (video replay), too jittery is bad quality
+        if (avgMovement < 0.001) return 0.2;  // Suspiciously static
+        if (avgMovement > 0.05) return 0.3;   // Too jittery
+        return 0.8;  // Good natural movement
+    }
+    
+    function calculateTextureEntropy(imageData) {
+        // Simple entropy estimation
+        const histogram = new Array(256).fill(0);
+        const data = imageData.data;
+        
+        for (let i = 0; i < data.length; i += 4) {
+            const gray = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
+            histogram[gray]++;
+        }
+        
+        const totalPixels = data.length / 4;
+        let entropy = 0;
+        
+        for (let i = 0; i < 256; i++) {
+            if (histogram[i] > 0) {
+                const p = histogram[i] / totalPixels;
+                entropy -= p * Math.log2(p);
+            }
+        }
+        
+        return Math.min(1, entropy / 8); // Normalize to 0-1
+    }
+
+    // ======================== FRAME CAPTURE ========================
+    
+    function shouldCaptureNow() {
+        if (state.capturedFrames.length >= CONFIG.TOTAL_FRAMES) return false;
+        
+        const elapsed = Date.now() - state.sessionStart;
+        const nextCaptureTime = state.captureSchedule[state.capturedFrames.length];
+        
+        if (elapsed >= nextCaptureTime) {
+            const timeSinceLast = Date.now() - state.lastCaptureTime;
+            return timeSinceLast >= CONFIG.MIN_FRAME_SPACING_MS;
+        }
+        
+        return false;
+    }
+    
+    function captureFrame(bbox, quality) {
+        // Crop face region
+        const padding = 0.3;
+        const x = Math.max(0, bbox.originX - bbox.width * padding);
+        const y = Math.max(0, bbox.originY - bbox.height * padding);
+        const w = Math.min(canvas.width - x, bbox.width * (1 + padding * 2));
+        const h = Math.min(canvas.height - y, bbox.height * (1 + padding * 2));
+        
+        // Draw cropped and resized to 224x224
+        cropCtx.drawImage(
+            canvas, 
+            x, y, w, h,
+            0, 0, CONFIG.CROP_SIZE, CONFIG.CROP_SIZE
+        );
+        
+        const imageData = cropCanvas.toDataURL('image/jpeg', CONFIG.JPEG_QUALITY);
+        
+        // Generate hash for anti-tamper
+        const frameId = state.capturedFrames.length;
+        const hashInput = `${imageData.slice(-100)}|${state.nonce}|${frameId}`;
+        const hash = simpleHash(hashInput);
+        
+        const frame = {
+            image: imageData,
+            frame_id: frameId,
+            timestamp: Date.now() - state.sessionStart,
+            hash: hash,
+            metadata: {
+                pose: quality.pose,
+lighting: quality.lighting,
+                sharpness: quality.sharpness,
+                jitter: state.jitterScore,
+                entropy: state.entropyScore
+            }
+        };
+        
+        state.capturedFrames.push(frame);
+        state.lastCaptureTime = Date.now();
+        
+        console.log(`✓ Captured frame ${frameId + 1}/${CONFIG.TOTAL_FRAMES}`);
+        
+        return frame;
+    }
+    
+    function simpleHash(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash;
+        }
+        return hash.toString(16);
+    }
+
+    // ======================== UI UPDATES ========================
+    
+    function updateQualityUI(gates) {
+        const setGate = (id, pass) => {
+            const el = $(id);
+            el.className = `quality-item ${pass ? 'pass' : 'fail'}`;
+        };
+        
+        setGate('qFace', gates.face);
+        setGate('qSize', gates.size);
+        setGate('qPose', gates.pose);
+setGate('qLight', gates.light);
+        setGate('qSharp', gates.sharp);
+        setGate('qLandmarks', gates.landmarks);
+        setGate('qMotion', gates.motion);
+    }
+    
+    function updateDebugUI(quality) {
+        $('dbgFps').textContent = state.fps.toFixed(0);
+        $('dbgFps').className = `debug-value ${state.fps >= 6 ? 'pass' : 'fail'}`;
+        
+        if (quality.pose) {
+            $('dbgYaw').textContent = quality.pose.yaw.toFixed(1) + '°';
+            $('dbgYaw').className = `debug-value ${Math.abs(quality.pose.yaw) <= CONFIG.MAX_YAW ? 'pass' : 'fail'}`;
+            
+            $('dbgPitch').textContent = quality.pose.pitch.toFixed(1) + '°';
+            $('dbgPitch').className = `debug-value ${Math.abs(quality.pose.pitch) <= CONFIG.MAX_PITCH ? 'pass' : 'fail'}`;
+        }
+        
+        if (quality.lighting) {
+            $('dbgLuma').textContent = quality.lighting.mean.toFixed(0);
+            $('dbgLuma').className = `debug-value ${quality.lighting.mean >= CONFIG.LUMA_MIN && quality.lighting.mean <= CONFIG.LUMA_MAX ? 'pass' : 'fail'}`;
+        }
+        
+        if (quality.sharpness !== undefined) {
+            $('dbgSharp').textContent = quality.sharpness.toFixed(0);
+            $('dbgSharp').className = `debug-value ${quality.sharpness >= CONFIG.SHARPNESS_MIN ? 'pass' : 'fail'}`;
+        }
+        
+        $('dbgFace').textContent = quality.gates?.face ? '✓' : '✗';
+        $('dbgFace').className = `debug-value ${quality.gates?.face ? 'pass' : 'fail'}`;
+    }
+    
+    function updateSignalsUI() {
+        $('sigJitter').textContent = (state.jitterScore * 100).toFixed(0) + '%';
+        $('sigEntropy').textContent = (state.entropyScore * 100).toFixed(0) + '%';
+        $('sigUniform').textContent = (state.uniformityScore * 100).toFixed(0) + '%';
+    }
+    
+    function updateFrameIndicators() {
+        for (let i = 0; i < CONFIG.TOTAL_FRAMES; i++) {
+            const dot = $(`frame${i}`);
+            if (i < state.capturedFrames.length) {
+                dot.className = 'frame-dot captured';
+            } else if (i === state.capturedFrames.length) {
+                dot.className = 'frame-dot current';
+            } else {
+                dot.className = 'frame-dot';
+            }
+        }
+    }
+    
+    function updateStatus(icon, title, subtitle, ovalClass) {
+        $('statusIcon').textContent = icon;
+        $('statusTitle').textContent = title;
+        $('statusSubtitle').textContent = subtitle;
+        $('faceOval').className = `oval-ui ${ovalClass}`;
+    }
+    
+    function updateProgress() {
+        const progress = (state.capturedFrames.length / CONFIG.TOTAL_FRAMES) * 100;
+        $('progressFill').style.width = `${progress}%`;
+    }
+    
+    function showLoading(text) {
+        $('loadingOverlay').classList.add('active');
+        $('loadingText').textContent = text;
+    }
+    
+    function hideLoading() {
+        $('loadingOverlay').classList.remove('active');
+    }
+
+    // ======================== MAIN DETECTION LOOP ========================
+    
+    async function detectionLoop() {
+        if (!state.isRunning) return;
+        
+        const now = performance.now();
+        state.fps = 1000 / (now - state.lastFrameTime);
+        state.lastFrameTime = now;
+        
+        // Draw frame to canvas
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        
+        // Run detection
+        const timestamp = performance.now();
+        const detections = state.faceDetector.detectForVideo(canvas, timestamp);
+        const landmarksResult = state.faceLandmarker.detectForVideo(canvas, timestamp);
+        
+        const detection = detections.detections[0];
+        const landmarks = landmarksResult.faceLandmarks[0];
+        const blendshapes = landmarksResult.faceBlendshapes;
+        
+        // Check hard gates
+        const quality = checkHardGates(detection, landmarks, blendshapes, imageData);
+        
+        // Update soft signals
+        state.jitterScore = calculateJitter(landmarks);
+        state.entropyScore = calculateTextureEntropy(imageData);
+        state.uniformityScore = quality.lighting ? 
+            Math.min(1, quality.lighting.range / 100) : 0.5;
+        
+        // Update UI
+        updateQualityUI(quality.gates);
+        updateDebugUI(quality);
+        updateSignalsUI();
+        updateFrameIndicators();
+        
+        if (quality.allPass) {
+            state.validFrameCount++;
+            
+            // Check if should capture
+            if (shouldCaptureNow()) {
+                captureFrame(detection.boundingBox, quality);
+                updateProgress();
+                
+                if (state.capturedFrames.length >= CONFIG.TOTAL_FRAMES) {
+                    await submitToServer();
+                    return;
+                }
             }
             
-            document.getElementById('q-face').className = `q-item ${res.face ? 'pass' : ''}`;
-            document.getElementById('q-pose').className = `q-item ${res.pose ? 'pass' : ''}`;
-            document.getElementById('q-eyes').className = `q-item ${res.eyes ? 'pass' : ''}`;
-            document.getElementById('q-still').className = `q-item ${still ? 'pass' : ''}`;
-
-            oval.className = `face-oval ${res.all && still ? 'valid' : 'detecting'}`;
-            document.getElementById('statusTitle').innerText = res.all && still ? 'Hold Still...' : 'Adjust Position';
-            document.getElementById('debug').innerText = `Y: ${res.yaw?.toFixed(1)} P: ${res.pitch?.toFixed(1)}`;
+            updateStatus('✓', 'Looking good!', 
+                `Capturing ${state.capturedFrames.length + 1}/${CONFIG.TOTAL_FRAMES}...`, 'valid');
+        } else {
+            updateStatus('⚠️', quality.message, 
+                `${state.capturedFrames.length}/${CONFIG.TOTAL_FRAMES} captured`, 
+                quality.gates.face ? 'detecting' : 'invalid');
         }
-
-        function showResult(data) {
-            document.getElementById('mainFlow').className = 'hidden';
-            const screen = document.getElementById('resultScreen');
-            screen.className = '';
-            document.getElementById('resTitle').innerText = data.decision === 'PASS' ? 'Success!' : 'Failed';
-            document.getElementById('resMsg').innerText = data.message;
-            if (state.stream) state.stream.getTracks().forEach(t => t.stop());
+        
+        // Continue loop
+        state.loopId = setTimeout(detectionLoop, CONFIG.DETECTION_INTERVAL_MS);
+    }
+    
+    function stopLoop() {
+        state.isRunning = false;
+        if (state.loopId) {
+            clearTimeout(state.loopId);
+            state.loopId = null;
         }
+    }
 
-        document.getElementById('startBtn').onclick = start;
-        init();
+    // ======================== SERVER SUBMISSION ========================
+    
+    async function submitToServer() {
+        stopLoop();
+        showLoading('Verifying liveness...');
+        
+        try {
+            const payload = {
+                session_id: state.sessionId,
+                nonce: state.nonce,
+                frames: state.capturedFrames,
+                client_metadata: {
+                    user_agent: navigator.userAgent,
+                    screen: `${screen.width}x${screen.height}`,
+                    capture_duration_ms: Date.now() - state.sessionStart
+                }
+            };
+            
+            const response = await fetch(`${CONFIG.API_URL}/verify`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            
+            if (!response.ok) throw new Error(`Server error: ${response.status}`);
+            
+            const result = await response.json();
+            
+            hideLoading();
+            showResult(result);
+            
+        } catch (error) {
+            console.error('Submission error:', error);
+            hideLoading();
+            
+            // Show error result
+            showResult({
+                decision: 'ERROR',
+                message: 'Connection error. Please try again.'
+            });
+        }
+    }
+
+    // ======================== RESULT ========================
+    
+    function showResult(result) {
+        stopCamera();
+        
+        $('mainFlow').classList.add('hidden');
+        $('resultScreen').classList.add('active');
+        
+        const isPass = result.decision === 'PASS';
+        
+        $('resultIcon').className = `result-icon ${isPass ? 'success' : 'error'}`;
+        $('resultIcon').textContent = isPass ? '✓' : '✗';
+        $('resultTitle').textContent = isPass ? 'Verified!' : 'Verification Failed';
+        $('resultSubtitle').textContent = result.message || 
+            (isPass ? 'Identity confirmed' : 'Please try again');
+        
+        if (isPass && state.capturedFrames.length > 0) {
+            // IMPORTANT: show the *best* captured frame, not the first one.
+            // Otherwise users see "green" during capture but the preview shows an earlier blink/open-mouth frame.
+            const bestId = (typeof result.best_frame_id === 'number') ? result.best_frame_id : null;
+            const best = bestId !== null
+                ? state.capturedFrames.find(f => f.frame_id === bestId)
+                : null;
+            const fallback = state.capturedFrames[state.capturedFrames.length - 1];
+            $('resultPhoto').src = (best || fallback).image;
+            $('resultPhoto').style.display = 'block';
+        } else {
+            $('resultPhoto').style.display = 'none';
+        }
+    }
+    
+    function restart() {
+        $('resultScreen').classList.remove('active');
+        $('mainFlow').classList.remove('hidden');
+        
+        // Reset state
+        state.capturedFrames = [];
+        state.poseHistory = [];
+        state.landmarkHistory = [];
+        state.validFrameCount = 0;
+        
+        // Reset UI
+        updateProgress();
+        updateFrameIndicators();
+        updateStatus('👤', 'Ready', 'Tap Start to begin', '');
+        
+        $('startBtn').disabled = false;
+        $('startBtn').textContent = 'Start Verification';
+    }
+
+    // ======================== CAMERA ========================
+    
+    async function startCamera() {
+        try {
+            // Detect if mobile
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            
+            // Mobile-optimized constraints
+            const constraints = {
+                video: {
+                    facingMode: 'user',
+                    width: { ideal: isMobile ? 480 : 640 },
+                    height: { ideal: isMobile ? 640 : 480 },
+                    frameRate: { ideal: 15, max: 30 }
+                },
+                audio: false
+            };
+            
+            // Try to get camera with ideal constraints
+            try {
+                state.stream = await navigator.mediaDevices.getUserMedia(constraints);
+            } catch (e) {
+                // Fallback to basic constraints
+                console.warn('Ideal constraints failed, trying fallback:', e);
+                state.stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user' },
+                    audio: false
+                });
+            }
+            
+            video.srcObject = state.stream;
+            
+            // Wait for video to be ready
+            await new Promise((resolve, reject) => {
+                video.onloadedmetadata = () => {
+                    video.play()
+                        .then(resolve)
+                        .catch(reject);
+                };
+                video.onerror = reject;
+                setTimeout(() => reject(new Error('Video load timeout')), 10000);
+            });
+            
+            console.log(`Camera started: ${video.videoWidth}x${video.videoHeight}`);
+            return true;
+            
+        } catch (error) {
+            console.error('Camera error:', error);
+            
+            // User-friendly error messages
+            let message = 'Cannot access camera.';
+            if (error.name === 'NotAllowedError') {
+                message = 'Camera permission denied. Please allow camera access and try again.';
+            } else if (error.name === 'NotFoundError') {
+                message = 'No camera found. Please ensure your device has a front camera.';
+            } else if (error.name === 'NotReadableError') {
+                message = 'Camera is in use by another app. Please close other apps and try again.';
+            }
+            
+            alert(message);
+            return false;
+        }
+    }
+    
+    function stopCamera() {
+        if (state.stream) {
+            state.stream.getTracks().forEach(t => t.stop());
+            state.stream = null;
+        }
+    }
+
+    // ======================== EVENT HANDLERS ========================
+    
+    $('startBtn').addEventListener('click', async () => {
+        $('startBtn').disabled = true;
+        $('startBtn').textContent = 'Starting...';
+        
+        // Start session
+        await startSession();
+        
+        // Generate capture schedule
+        state.captureSchedule = generateCaptureSchedule();
+        
+        // Start camera
+        if (!await startCamera()) {
+            $('startBtn').disabled = false;
+            $('startBtn').textContent = 'Start Verification';
+            return;
+        }
+        
+        // Reset state
+        state.capturedFrames = [];
+        state.poseHistory = [];
+        state.landmarkHistory = [];
+        state.validFrameCount = 0;
+        state.lastFrameTime = performance.now();
+        state.isRunning = true;
+        
+        $('startBtn').textContent = 'Scanning...';
+        updateStatus('🔍', 'Scanning', 'Position your face in the oval', 'detecting');
+        
+        // Start detection loop
+        setTimeout(detectionLoop, 100);
+    });
+    
+    $('doneBtn').addEventListener('click', restart);
+    
+    window.addEventListener('beforeunload', () => {
+        stopLoop();
+        stopCamera();
+    });
+
+    // ======================== INIT ========================
+    window.addEventListener('load', initialize);
     </script>
 </body>
 </html>
