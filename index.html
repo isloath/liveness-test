@@ -194,7 +194,6 @@
             fill:none;
             stroke: rgba(255,255,255,0.10);
             stroke-width: 10;
-            filter: blur(2px);
             opacity: 0.0;
             transition: opacity 0.2s ease;
         }
@@ -204,6 +203,73 @@
         .oval-ui.valid .oval-glow{ opacity: 0.35; stroke: rgba(34,197,94,0.55); }
         .oval-ui.invalid .oval-ring{ stroke: rgba(239,68,68,0.95); }
         .oval-ui.invalid .oval-glow{ opacity: 0.35; stroke: rgba(239,68,68,0.55); }
+
+        
+        /* Sweep ring */
+        .oval-sweep{
+            fill:none;
+            stroke: rgba(255,255,255,0.0);
+            stroke-width: 3.6;
+            stroke-linecap: round;
+            stroke-dasharray: 36 520; /* arc + gap (approx for ellipse) */
+            stroke-dashoffset: 0;
+            opacity: 0.0;
+        }
+        .oval-ui.capturing .oval-sweep{
+            opacity: 0.95;
+            stroke: rgba(255,255,255,0.85);
+            animation: ovalSweep 1.1s linear infinite;
+        }
+        .oval-ui.detecting .oval-sweep{
+            opacity: 0.55;
+            stroke: rgba(255,255,255,0.45);
+            animation: ovalSweep 1.4s linear infinite;
+        }
+        @keyframes ovalSweep{
+            from { stroke-dashoffset: 0; }
+            to { stroke-dashoffset: -556; }
+        }
+
+        /* Direction arrows */
+        .oval-arrows{
+            position:absolute;
+            inset:0;
+            display:block;
+        }
+        .oval-arrows .arrow{
+            position:absolute;
+            width: 34px;
+            height: 34px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            border-radius: 999px;
+            background: rgba(0,0,0,0.35);
+            color: rgba(255,255,255,0.92);
+            font-size: 16px;
+            opacity: 0.0;
+            transform: scale(0.95);
+            transition: opacity 0.12s ease, transform 0.12s ease;
+            user-select:none;
+            -webkit-user-select:none;
+        }
+        .oval-ui.show-up .oval-arrows .arrow-up,
+        .oval-ui.show-down .oval-arrows .arrow-down,
+        .oval-ui.show-left .oval-arrows .arrow-left,
+        .oval-ui.show-right .oval-arrows .arrow-right{
+            opacity: 0.95;
+            transform: scale(1.0);
+        }
+        .oval-arrows .arrow-up{ left: 50%; top: 14%; transform: translateX(-50%) scale(0.95); }
+        .oval-arrows .arrow-down{ left: 50%; bottom: 18%; transform: translateX(-50%) scale(0.95); }
+        .oval-arrows .arrow-left{ left: 10%; top: 52%; transform: translateY(-50%) scale(0.95); }
+        .oval-arrows .arrow-right{ right: 10%; top: 52%; transform: translateY(-50%) scale(0.95); }
+
+        /* Make SVG stable across browsers */
+        .oval-svg{
+            width:100%;
+            height:100%;
+        }
 
         /* Progress */
         .progress-container {
@@ -452,17 +518,45 @@
                 
                 <div class="overlay">
                     <div class="oval-ui" id="faceOval" aria-hidden="true">
-    <svg class="oval-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+    <!-- Regula/Incode-style: fixed target + guidance + sweep ring -->
+    <svg class="oval-svg" viewBox="0 0 300 400" preserveAspectRatio="xMidYMid meet">
         <defs>
             <mask id="ovalHole">
-                <rect x="0" y="0" width="100" height="100" fill="white"></rect>
-                <ellipse cx="50" cy="50" rx="28" ry="34" fill="black"></ellipse>
+                <rect x="0" y="0" width="300" height="400" fill="white"></rect>
+                <!-- Oval hole (transparent) -->
+                <ellipse cx="150" cy="205" rx="86" ry="122" fill="black"></ellipse>
             </mask>
+
+            <!-- Glow filter (Safari-friendly) -->
+            <filter id="ovalGlow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="3.5" result="blur"></feGaussianBlur>
+                <feMerge>
+                    <feMergeNode in="blur"></feMergeNode>
+                    <feMergeNode in="SourceGraphic"></feMergeNode>
+                </feMerge>
+            </filter>
         </defs>
-        <rect class="oval-dim" x="0" y="0" width="100" height="100" mask="url(#ovalHole)"></rect>
-        <ellipse class="oval-ring" cx="50" cy="50" rx="28" ry="34"></ellipse>
-        <ellipse class="oval-glow" cx="50" cy="50" rx="28" ry="34"></ellipse>
+
+        <!-- Dim outside of oval -->
+        <rect class="oval-dim" x="0" y="0" width="300" height="400" mask="url(#ovalHole)"></rect>
+
+        <!-- Base ring -->
+        <ellipse class="oval-ring" cx="150" cy="205" rx="86" ry="122" vector-effect="non-scaling-stroke"></ellipse>
+
+        <!-- Animated sweep (only when capturing) -->
+        <ellipse class="oval-sweep" cx="150" cy="205" rx="86" ry="122" vector-effect="non-scaling-stroke"></ellipse>
+
+        <!-- Glow -->
+        <ellipse class="oval-glow" cx="150" cy="205" rx="86" ry="122" vector-effect="non-scaling-stroke" filter="url(#ovalGlow)"></ellipse>
     </svg>
+
+    <!-- Directional guidance arrows -->
+    <div class="oval-arrows" aria-hidden="true">
+        <div class="arrow arrow-up">▲</div>
+        <div class="arrow arrow-down">▼</div>
+        <div class="arrow arrow-left">◀</div>
+        <div class="arrow arrow-right">▶</div>
+    </div>
 </div>
                     
                     <div class="progress-container">
@@ -772,17 +866,80 @@
 
     // ======================== HARD GATES ========================
     
-    function checkHardGates(detection, landmarks, blendshapes, imageData) {
+    
+    // ======================== REALISM HELPERS ========================
+    // Smooth noisy signals so UI doesn't flicker (vendor trick)
+    const SMOOTH = {
+        bbox: 0.35,   // lower = smoother
+        pose: 0.30,
+        fit:  0.25,
+        msgHoldMs: 220
+    };
+
+    const smoothState = {
+        cx: null, cy: null, bw: null, bh: null,
+        yaw: 0, pitch: 0, roll: 0,
+        fit: 0,
+        lastMsg: "",
+        lastMsgCandidate: "",
+        lastMsgSince: 0
+    };
+
+    function ema(prev, next, alpha){
+        if (prev === null || prev === undefined) return next;
+        return prev + alpha * (next - prev);
+    }
+
+    // Oval in normalized [0..1] coords (matches SVG proportions)
+    const OVAL = {
+        cx: 0.5, cy: 0.5125, // center (approx 205/400)
+        rx: 0.2867, ry: 0.305, // 86/300, 122/400
+        margin: 0.04          // safety margin
+    };
+
+    function computeOvalFit(bbox, w, h){
+        const cx = (bbox.originX + bbox.width * 0.5) / w;
+        const cy = (bbox.originY + bbox.height * 0.5) / h;
+        const nx = (cx - OVAL.cx) / (OVAL.rx - OVAL.margin);
+        const ny = (cy - OVAL.cy) / (OVAL.ry - OVAL.margin);
+        const inside = (nx*nx + ny*ny) <= 1.0;
+
+        // Direction cues (based on center)
+        const dx = cx - OVAL.cx;
+        const dy = cy - OVAL.cy;
+
+        // Fit score: 1 = centered, 0 = far outside
+        const dist = Math.sqrt(nx*nx + ny*ny);
+        const fitScore = Math.max(0, Math.min(1, 1 - (dist - 0.35))); // forgiving near center
+
+        return { cx, cy, inside, dx, dy, fitScore };
+    }
+
+    function stableMessage(candidate){
+        const now = performance.now();
+        if (candidate !== smoothState.lastMsgCandidate){
+            smoothState.lastMsgCandidate = candidate;
+            smoothState.lastMsgSince = now;
+            return smoothState.lastMsg; // keep old until held
+        }
+        if ((now - smoothState.lastMsgSince) >= SMOOTH.msgHoldMs){
+            smoothState.lastMsg = candidate;
+        }
+        return smoothState.lastMsg;
+    }
+
+function checkHardGates(detection, landmarks, blendshapes, imageData) {
         const gates = {
             face: false,
             size: false,
             pose: false,            light: false,
             sharp: false,
             landmarks: false,
-            motion: false
+            motion: false,
+            fit: false
         };
         
-        let message = 'Position your face in the oval';
+        let message = 'Center your face in the oval';
         const w = canvas.width;
         const h = canvas.height;
         
@@ -795,28 +952,72 @@
         
         const bbox = detection.boundingBox;
         
+        // Smooth bbox center/size
+        const rawCx = bbox.originX + bbox.width * 0.5;
+        const rawCy = bbox.originY + bbox.height * 0.5;
+        smoothState.cx = ema(smoothState.cx, rawCx, SMOOTH.bbox);
+        smoothState.cy = ema(smoothState.cy, rawCy, SMOOTH.bbox);
+        smoothState.bw = ema(smoothState.bw, bbox.width, SMOOTH.bbox);
+        smoothState.bh = ema(smoothState.bh, bbox.height, SMOOTH.bbox);
+
+        const smoothedBox = {
+            originX: smoothState.cx - smoothState.bw * 0.5,
+            originY: smoothState.cy - smoothState.bh * 0.5,
+            width: smoothState.bw,
+            height: smoothState.bh
+        };
+
+        // Regula/Incode feel: fixed oval target; guide user to align
+        const fit = computeOvalFit(smoothedBox, w, h);
+        smoothState.fit = ema(smoothState.fit, fit.fitScore, SMOOTH.fit);
+        
         // 2. Face size ratio
-        const faceArea = bbox.width * bbox.height;
+        const faceArea = smoothedBox.width * smoothedBox.height;
         const frameArea = w * h;
         const ratio = faceArea / frameArea;
         
+        // 2b. Oval fit (direction guidance)
+        // If face is off-center, show arrows and block capture even if size/pose are ok.
+        if (!fit.inside) {
+            // Determine direction arrows (deadzone to prevent flicker)
+            const dead = 0.035;
+            const showLeft = fit.dx > dead;
+            const showRight = fit.dx < -dead;
+            const showUp = fit.dy > dead;
+            const showDown = fit.dy < -dead;
+
+            // We encode arrow classes via message later (updateStatus)
+            state._arrowClass = `${showUp ? ' show-up' : ''}${showDown ? ' show-down' : ''}${showLeft ? ' show-left' : ''}${showRight ? ' show-right' : ''}`;
+
+            message = 'Center your face';
+        } else {
+            gates.fit = true;
+            state._arrowClass = '';
+        }
+
         if (ratio < CONFIG.FACE_RATIO_MIN) {
+            if (gates.fit)
             message = 'Move closer';
         } else if (ratio > CONFIG.FACE_RATIO_MAX) {
+            if (gates.fit)
             message = 'Move back';
         } else {
             gates.size = true;
         }
         
-        // 3. Pose estimation (from landmarks) - STRICT for reliable eye detection
-        const pose = estimatePose(landmarks);
+        // 3. Pose estimation (from landmarks)
+        const poseRaw = estimatePose(landmarks);
+        smoothState.yaw = ema(smoothState.yaw, poseRaw.yaw, SMOOTH.pose);
+        smoothState.pitch = ema(smoothState.pitch, poseRaw.pitch, SMOOTH.pose);
+        smoothState.roll = ema(smoothState.roll, poseRaw.roll, SMOOTH.pose);
+        const pose = { yaw: smoothState.yaw, pitch: smoothState.pitch, roll: smoothState.roll };
         
         // Pose must be frontal for reliable eye detection
-        if (Math.abs(pose.yaw) > CONFIG.MAX_YAW) {
+        if (gates.fit && Math.abs(pose.yaw) > CONFIG.MAX_YAW) {
             message = pose.yaw > 0 ? 'Turn head left' : 'Turn head right';
-        } else if (Math.abs(pose.pitch) > CONFIG.MAX_PITCH) {
+        } else if (gates.fit && Math.abs(pose.pitch) > CONFIG.MAX_PITCH) {
             message = pose.pitch > 0 ? 'Look up at camera' : 'Raise your head';
-        } else if (Math.abs(pose.roll) > CONFIG.MAX_ROLL) {
+        } else if (gates.fit && Math.abs(pose.roll) > CONFIG.MAX_ROLL) {
             message = 'Straighten head';
         } else {
             gates.pose = true;
@@ -824,32 +1025,32 @@
         // 4. Lighting check
         const lighting = analyzeLighting(imageData);
         if (lighting.mean < CONFIG.LUMA_MIN) {
-            message = 'Too dark - more light needed';
+            if (gates.fit) message = 'Too dark - more light needed';
         } else if (lighting.mean > CONFIG.LUMA_MAX) {
-            message = 'Too bright';
+            if (gates.fit) message = 'Too bright';
         } else if (lighting.range < CONFIG.LUMA_RANGE_MIN) {
-            message = 'Low contrast';
+            if (gates.fit) message = 'Low contrast';
         } else {
             gates.light = true;
         }
-        
-        // 6. Sharpness
+
+// 6. Sharpness
         const sharpness = calculateSharpness(imageData);
         if (sharpness < CONFIG.SHARPNESS_MIN) {
-            message = 'Image blurry - hold still';
+            if (gates.fit) message = 'Image blurry - hold still';
         } else {
             gates.sharp = true;
         }
-        
-        // 7. Key landmarks visible
+
+// 7. Key landmarks visible
         const landmarksVisible = checkLandmarksVisible(landmarks);
         if (!landmarksVisible) {
-            message = 'Face partially hidden';
+            if (gates.fit) message = 'Face partially hidden';
         } else {
             gates.landmarks = true;
         }
-        
-        // 8. Motion check (natural movement)
+
+// 8. Motion check (natural movement)
         const hasMotion = checkNaturalMotion(pose);
         gates.motion = hasMotion || state.capturedFrames.length === 0;
         
@@ -1216,7 +1417,10 @@ setGate('qLight', gates.light);
         $('statusIcon').textContent = icon;
         $('statusTitle').textContent = title;
         $('statusSubtitle').textContent = subtitle;
-        $('faceOval').className = `oval-ui ${ovalClass}`;
+
+        // Vendor trick: arrows are UI guidance, not part of capture logic
+        const arrows = state._arrowClass || '';
+        $('faceOval').className = `oval-ui ${ovalClass || ''}${arrows}`;
     }
     
     function updateProgress() {
@@ -1227,6 +1431,10 @@ setGate('qLight', gates.light);
     function showLoading(text) {
         $('loadingOverlay').classList.add('active');
         $('loadingText').textContent = text;
+        // Keep oval alive with sweep during server verification
+        $('faceOval').className = `oval-ui detecting capturing${state._arrowClass || ''}`;
+        $('statusTitle').textContent = 'Verifying';
+        $('statusSubtitle').textContent = text;
     }
     
     function hideLoading() {
@@ -1287,11 +1495,12 @@ setGate('qLight', gates.light);
                 }
             }
             
-            updateStatus('✓', 'Looking good!', 
-                `Capturing ${state.capturedFrames.length + 1}/${CONFIG.TOTAL_FRAMES}...`, 'valid');
+            updateStatus('✓', 'Hold still',
+                `Capturing ${state.capturedFrames.length + 1}/${CONFIG.TOTAL_FRAMES}...`, 'valid capturing');
         } else {
-            updateStatus('⚠️', quality.message, 
-                `${state.capturedFrames.length}/${CONFIG.TOTAL_FRAMES} captured`, 
+            const msg = stableMessage(quality.message);
+            updateStatus('⚠️', msg,
+                `${state.capturedFrames.length}/${CONFIG.TOTAL_FRAMES} captured`,
                 quality.gates.face ? 'detecting' : 'invalid');
         }
         
@@ -1367,14 +1576,7 @@ setGate('qLight', gates.light);
             (isPass ? 'Identity confirmed' : 'Please try again');
         
         if (isPass && state.capturedFrames.length > 0) {
-            // IMPORTANT: show the *best* captured frame, not the first one.
-            // Otherwise users see "green" during capture but the preview shows an earlier blink/open-mouth frame.
-            const bestId = (typeof result.best_frame_id === 'number') ? result.best_frame_id : null;
-            const best = bestId !== null
-                ? state.capturedFrames.find(f => f.frame_id === bestId)
-                : null;
-            const fallback = state.capturedFrames[state.capturedFrames.length - 1];
-            $('resultPhoto').src = (best || fallback).image;
+            $('resultPhoto').src = state.capturedFrames[0].image;
             $('resultPhoto').style.display = 'block';
         } else {
             $('resultPhoto').style.display = 'none';
